@@ -186,6 +186,8 @@ function update(dt){
       if(health<=0){state='over';showMsg('😵 Os monstros pegaram você','Toque ou aperte ESPAÇO para tentar de novo')}
     }
   }
+  // avança a fase da passada só enquanto anda no chão (animação de corrida)
+  if(P.onGround&&Math.abs(P.vx)>10)walkPhase+=dt*12;else walkPhase=0;
   if(P.y>H+300){resetPlayer()}
   if(state==='playing'&&rectsOverlap(pb,goal)){
     state='win';showMsg('🏁 Fase 1 completa!','Moedas: '+score+' — Toque ou aperte ESPAÇO para jogar de novo');
@@ -289,39 +291,59 @@ function drawCoin(c,cam){
   ctx.beginPath();ctx.ellipse(x-3,c.y+bob-3,2.4,2.4,0,0,Math.PI*2);ctx.fill();
 }
 // homem (Jacob): cabelo cacheado, barba, blusa vermelha, faixa vermelha, short branco, sapato branco — estilo cartoon
-function drawMan(x,y,dir,legSwing){
+// phase = fase da passada (contínua), jumping = true quando está no ar
+function drawMan(x,y,dir,phase,jumping){
   ctx.save();
   if(dir<0){ctx.translate(x+32,y);ctx.scale(-1,1);}else{ctx.translate(x,y);}
-  const lo=legSwing*4;
-  // sapatos brancos arredondados
-  ctx.fillStyle='#fff';
-  ctx.beginPath();ctx.roundRect(4,54,10,10-lo,4);ctx.fill();outline(2.5);
-  ctx.beginPath();ctx.roundRect(18,54,10,10+lo,4);ctx.fill();outline(2.5);
-  // pernas
-  ctx.fillStyle='#5a3a20';
-  ctx.beginPath();ctx.roundRect(6,38,8,18-lo,4);ctx.fill();outline(2.5);
-  ctx.beginPath();ctx.roundRect(18,38,8,18+lo,4);ctx.fill();outline(2.5);
+  // pernas alternam de verdade (uma na frente, outra atrás), e ficam numa pose de pulo no ar
+  const legL=jumping?-.35:Math.sin(phase)*.3;
+  const legR=jumping?.28:Math.sin(phase+Math.PI)*.3;
+  // braços balançam em oposição às pernas (corrida natural) ou erguidos no pulo
+  const armL=jumping?-.9:Math.sin(phase+Math.PI)*.45;
+  const armR=jumping?-.9:Math.sin(phase)*.45;
+  // o corpo todo sobe e desce um pouco a cada passada
+  const bob=jumping?-3:Math.abs(Math.sin(phase))*2.2;
+  ctx.translate(0,-bob);
+  function lg(x0,y0,x1,y1,c0,c1){const g=ctx.createLinearGradient(x0,y0,x1,y1);g.addColorStop(0,c0);g.addColorStop(1,c1);return g}
+
+  // perna de trás (mais escura, sugere profundidade)
+  ctx.save();ctx.translate(9,44);ctx.rotate(legL);
+  ctx.fillStyle=lg(-4,0,4,0,'#5a3a20','#3f2814');
+  ctx.beginPath();ctx.roundRect(-4,0,8,18,4);ctx.fill();outline(2.5);
+  ctx.fillStyle='#e8e8e8';ctx.beginPath();ctx.roundRect(-5,16,10,9,4);ctx.fill();outline(2.5);
+  ctx.restore();
+  // braço de trás
+  ctx.save();ctx.translate(3,21);ctx.rotate(armL);
+  ctx.fillStyle='#c81818';ctx.beginPath();ctx.roundRect(-3,0,6,16,3);ctx.fill();outline(2.5);
+  ctx.fillStyle='#4a2f18';ctx.beginPath();ctx.roundRect(-2,14,4,6,2);ctx.fill();outline(1.8);
+  ctx.restore();
+
   // short branco
-  const shortsG=ctx.createLinearGradient(4,30,4,42);
-  shortsG.addColorStop(0,'#fff');shortsG.addColorStop(1,'#e6e6e6');
-  ctx.fillStyle=shortsG;
+  ctx.fillStyle=lg(4,30,4,42,'#fff','#e6e6e6');
   ctx.beginPath();ctx.roundRect(4,30,24,12,5);ctx.fill();outline(2.5);
-  // blusa vermelha
-  const shirtG=ctx.createLinearGradient(2,10,2,32);
-  shirtG.addColorStop(0,'#ff4a4a');shirtG.addColorStop(1,'#c81818');
-  ctx.fillStyle=shirtG;
+  // blusa vermelha (gradiente lateral pra dar volume 3D)
+  ctx.fillStyle=lg(2,10,30,10,'#ff5a5a','#b81414');
   ctx.beginPath();ctx.roundRect(2,10,28,22,8);ctx.fill();outline(3);
-  ctx.fillStyle='rgba(255,255,255,.25)';
+  ctx.fillStyle='rgba(255,255,255,.28)';
   ctx.beginPath();ctx.roundRect(5,12,7,14,4);ctx.fill();
-  // braços
-  ctx.fillStyle='#e02525';
-  ctx.beginPath();ctx.roundRect(-2,13,6,16,3);ctx.fill();outline(2.5);
-  ctx.beginPath();ctx.roundRect(28,13,6,16,3);ctx.fill();outline(2.5);
-  ctx.fillStyle='#5a3a20';
-  ctx.beginPath();ctx.roundRect(0,25,4,10,2);ctx.fill();outline(2);
-  ctx.beginPath();ctx.roundRect(28,25,4,10,2);ctx.fill();outline(2);
-  // cabeça
-  ctx.fillStyle='#e8ab7a';
+
+  // perna da frente
+  ctx.save();ctx.translate(23,44);ctx.rotate(legR);
+  ctx.fillStyle=lg(-4,0,4,0,'#6a4526','#4a2f18');
+  ctx.beginPath();ctx.roundRect(-4,0,8,18,4);ctx.fill();outline(2.5);
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(-5,16,10,9,4);ctx.fill();outline(2.5);
+  ctx.restore();
+  // braço da frente
+  ctx.save();ctx.translate(29,21);ctx.rotate(armR);
+  ctx.fillStyle=lg(-3,0,3,0,'#ff3a3a','#e02525');
+  ctx.beginPath();ctx.roundRect(-3,0,6,16,3);ctx.fill();outline(2.5);
+  ctx.fillStyle='#6a4526';ctx.beginPath();ctx.roundRect(-2,14,4,6,2);ctx.fill();outline(1.8);
+  ctx.restore();
+
+  // cabeça (gradiente esférico pra dar sensação de volume/3D)
+  const headG=ctx.createRadialGradient(12,-2,2,16,2,14);
+  headG.addColorStop(0,'#f2c08e');headG.addColorStop(1,'#d99a66');
+  ctx.fillStyle=headG;
   ctx.beginPath();ctx.arc(16,2,12,0,Math.PI*2);ctx.fill();outline(3);
   // cabelo cacheado (bolinhas)
   ctx.fillStyle='#2a1a10';
@@ -395,12 +417,12 @@ function drawShadow(x,y,w){
   ctx.fillStyle='rgba(0,0,0,.22)';
   ctx.beginPath();ctx.ellipse(x,y,w,w*.28,0,0,Math.PI*2);ctx.fill();
 }
+let walkPhase=0;
 function drawPlayer(){
   if(P.inv>0&&Math.floor(t*14)%2===0)return;
   const moving=P.onGround&&Math.abs(P.vx)>10;
-  const legSwing=moving?Math.sin(t*14):0;
   drawShadow(P.x-camX+16,GROUND_Y+2,15);
-  drawMan(P.x-camX,P.y,P.dir,legSwing);
+  drawMan(P.x-camX,P.y,P.dir,walkPhase,!P.onGround);
 }
 function drawGoalFlag(){
   const x=goal.x-camX;if(x<-40||x>W+40)return;
@@ -431,10 +453,10 @@ function draw(){
 function drawTitle(){
   drawSky(0);
   drawGround(0);
-  const cx=W*.5,baseY=GROUND_Y,idle=Math.sin(t*2)*.3;
+  const cx=W*.5,baseY=GROUND_Y;
   ctx.fillStyle='rgba(255,255,255,.35)';
   ctx.beginPath();ctx.ellipse(cx,baseY+6,46,12,0,0,Math.PI*2);ctx.fill();
-  drawMan(cx-16,baseY-84,1,idle);
+  drawMan(cx-16,baseY-84,1,t*1.2,false);
 }
 
 let last=performance.now();
