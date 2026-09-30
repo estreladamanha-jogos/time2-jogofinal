@@ -94,7 +94,7 @@ body.touch.ingame #touch{display:block}
 </div>
 <div id="warn" class="off">⚠️ PÁSSARO VAI CAIR! DESVIE! ⚠️</div>
 <div id="pwrhud" class="off">
-  <div class="pwr eq" data-k="star"><span class="ic">⭐</span><div class="pbarbg"><i id="starbar"></i></div><span class="kk">🖱️</span></div>
+  <div class="pwr eq" data-k="star"><span class="ic">⭐</span><div class="pbarbg"><i id="starbar"></i></div><span class="kk">X</span></div>
   <div class="pwr" data-k="wind" id="windwrap"><span class="ic">🌬️</span><div class="pbarbg"><i id="windbar"></i></div><span class="kk">C</span></div>
   <div id="fragc">✨ 0/6</div>
 </div>
@@ -135,13 +135,14 @@ body.touch.ingame #touch{display:block}
       <li>Você tem 3 corações e perde um se cair no vazio, levar cocô de pássaro, banana de macaco ou encostar num macaco.</li>
       <li><b>🐦 Pássaros:</b> quando aparecer o aviso vermelho "VAI CAIR", corra para longe da marcação no chão antes dos 3 segundos acabarem!</li>
       <li><b>🐒 Macacos:</b> andam de um lado pro outro e jogam banana em você. Pule em cima deles para derrotá-los, ou use o poder da estrela. Macacos fracos têm 15% de vida e os fortes 20%.</li>
-      <li>Derrote inimigos para ganhar fragmentos ✨. Com 5 fragmentos você desbloqueia o <b>poder da estrela</b> (clique com o <b>mouse</b> ou toque no botão ⭐ para usar); com mais fragmentos desbloqueia o <b>poder do vento</b> (tecla <b>C</b>). Use <b>Q</b> para trocar o poder em destaque.</li>
+      <li>Derrote inimigos para ganhar fragmentos ✨. Com 5 fragmentos você desbloqueia o <b>poder da estrela</b> (tecla <b>X</b> ou toque no botão ⭐ para usar); com mais fragmentos desbloqueia o <b>poder do vento</b> (tecla <b>C</b>). Use <b>Q</b> para trocar o poder em destaque.</li>
+      <li><b>🌟 Moeda especial:</b> em cada fase tem 1 moeda-estrela brilhando em cima de um bloco de tijolo.</li>
+      <li><b>🌿 Arbustos com aranha:</b> pular em cima faz ele desaparecer e dá uma moeda-estrela; encostar do lado tira meio coração.</li>
       <li>O poder da estrela dura alguns segundos e depois precisa recarregar — fique de olho na barrinha.</li>
       <li><b>❓ Blocos de interrogação:</b> pule por baixo deles para ganhar moedas-estrela 🌟.</li>
       <li><b>🧱 Degraus de tijolo:</b> servem para subir nas partes mais altas do caminho.</li>
       <li><b>🟨 Plataformas de areia flutuantes:</b> suba nelas para pegar a moeda-estrela em cima.</li>
       <li><b>🪨 Pedras</b> e <b>💧 lagos:</b> obstáculos no chão, pule por cima deles.</li>
-      <li><b>🌿 Arbustos com aranha:</b> encostar do lado tira meio coração, mas pular em cima dá uma moeda-estrela.</li>
       <li><b>🪵 Gravetos (pelo menos 2 por fase):</b> aperte <b>E</b> perto para pegar, e aperte <b>E</b> de novo para arremessar nos inimigos (tira 5% da vida deles).</li>
     </ul>
     <button class="btn" id="bBack">Voltar</button>
@@ -391,9 +392,9 @@ const PAL=[
 const BS=24;
 function genLevel(i){
   const L=LEVELS[i],d=L.d,rnd=mulberry(9001+i*131),R=(a,b)=>a+(b-a)*rnd();
-  const lv={solids:[],movers:[],elevs:[],zones:[],portal:null,end:0,L,idx:i};
+  const lv={solids:[],movers:[],elevs:[],zones:[],portal:null,end:0,L,idx:i,bricks:[]};
   let x=0,y=0,zx=0,zb=0;
-  const G=(len,top,kind)=>{const t=top===undefined?y:top;lv.solids.push({x0:x,x1:x+len,y0:t-40,y1:t,k:kind||'g'});x+=len};
+  const G=(len,top,kind)=>{const t=top===undefined?y:top;const o={x0:x,x1:x+len,y0:t-40,y1:t,k:kind||'g'};lv.solids.push(o);x+=len;return o};
   const plat=(a,b,t)=>lv.solids.push({x0:a,x1:b,y0:t-1.6,y1:t,k:'p'});
   const ceil=(a,b,bt)=>lv.solids.push({x0:a,x1:b,y0:bt,y1:bt+6,k:'c'});
   const closeZone=()=>{lv.zones.push({x0:zx,x1:x,base:zb});zx=x};
@@ -402,9 +403,9 @@ function genLevel(i){
     G(R(12,22)*(1-.3*d));
     const k=Math.floor(R(2,4.99)),hs=[];
     // degraus de tijolo, servem para subir
-    for(let j=0;j<k;j++){const h=R(.6,1.3+.6*d);y+=h;hs.push(h);G(R(6,9-3*d),undefined,'b')}
+    for(let j=0;j<k;j++){const h=R(.6,1.3+.6*d);y+=h;hs.push(h);lv.bricks.push(G(R(6,9-3*d),undefined,'b'))}
     G(R(6,10)*(1-.3*d));
-    for(let j=k-1;j>=0;j--){y-=hs[j];G(R(6,9-3*d),undefined,'b')}
+    for(let j=k-1;j>=0;j--){y-=hs[j];lv.bricks.push(G(R(6,9-3*d),undefined,'b'))}
   }}
   // P = pulos entre plataformas
   function pP(len){const s=x;while(x-s<len){
@@ -543,6 +544,13 @@ function genLevel(i){
       }
     }
   }
+  // Moeda especial: 1 estrela brilhante por fase, sempre em cima de um brick block
+  lv.specialStar=null;
+  if(lv.bricks.length){
+    const ssr=mulberry(9900+i*37);
+    const bb=lv.bricks[Math.floor(ssr()*lv.bricks.length)];
+    lv.specialStar={x:(bb.x0+bb.x1)/2,y:bb.y1+.9,taken:false,mesh:null};
+  }
   lv.bk=new Map();
   for(const s of lv.solids){for(let b=Math.floor(s.x0/BS);b<=Math.floor(s.x1/BS);b++){let a=lv.bk.get(b);if(!a){a=[];lv.bk.set(b,a)}a.push(s)}}
   return lv;
@@ -638,6 +646,9 @@ function buildEnv(i){
   }
   // sol / lua
   const sun=mesh(SPH,new THREE.MeshBasicMaterial({color:p.s,fog:false}),0,0,-180,p.night?9:14);envGroup.add(sun);envGroup.sun=sun;
+  // pôr do sol: brilho quente ao redor do sol/lua
+  const sunHalo=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(),color:p.night?0x5a49a0:0xff9a54,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,fog:false,opacity:p.night?.35:.55}));
+  sunHalo.scale.set(p.night?42:72,p.night?42:72,1);envGroup.add(sunHalo);envGroup.sunHalo=sunHalo;
   // estrelas
   envGroup.stars=null;
   if(p.night){
@@ -783,7 +794,7 @@ function streamLevel(cx){
   const a=cx-75,b=cx+100;
   for(const s of LV.solids){
     const vis=s.x1>a&&s.x0<b;
-    if(vis&&!s.m){s.m=makeSolidMesh(s);lvGroup.add(s.m)}
+    if(vis&&!s.m&&!s.gone){s.m=makeSolidMesh(s);lvGroup.add(s.m)}
     else if(!vis&&s.m){lvGroup.remove(s.m);s.m=null}
   }
 }
@@ -831,9 +842,16 @@ function makeStarMesh(){
   const s=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(),color:0xfff27a,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));
   s.scale.set(1.6,1.6,1);return s;
 }
+function makeSpecialStarMesh(){
+  const g=new THREE.Group();
+  const coin=makeCoinMesh();coin.scale.set(1.7,1.7,1.7);g.add(coin);
+  const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(),color:0xfff27a,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false,opacity:.85}));
+  glow.scale.set(2.8,2.8,1);g.add(glow);
+  return g;
+}
 function groundHeightAt(x){
   let gy=zoneBase(x);
-  for(const c of near(x))if(c.k!=='c'&&x+.01>c.x0&&x-.01<c.x1)gy=Math.max(gy,c.y1);
+  for(const c of near(x))if(c.k!=='c'&&!c.gone&&x+.01>c.x0&&x-.01<c.x1)gy=Math.max(gy,c.y1);
   return gy;
 }
 function streamMonkeys(cx){
@@ -866,6 +884,7 @@ function updateEnv(cx,cy,t){
     lf.rotation.z=t*2+lf.userData.ph;lf.rotation.x=t*1.4+lf.userData.ph;
   }
   envGroup.sun.position.set(cx+50,cy+34,-180);
+  if(envGroup.sunHalo)envGroup.sunHalo.position.set(cx+50,cy+34,-181);
   if(envGroup.stars)envGroup.stars.position.set(cx*.97,cy*.97,0);
 }
 function updateTreesSway(t){
@@ -1013,12 +1032,14 @@ function damagePlayer(amount){
 function hitPlayer(){damagePlayer(2)}
 function updateBushes(dt){
   for(const u of LV.bushes){
+    if(u.gone)continue;
     if(u.hitCd>0)u.hitCd-=dt;
-    if(u.rewardCd>0)u.rewardCd-=dt;
     const ux=(u.x0+u.x1)/2,dx=Math.abs(ux-P.x);
     if(dx<1.3){
       if(P.vy<-2&&P.y>u.y1+.6){
-        if(u.rewardCd<=0){u.rewardCd=3;spawnCoinPop(ux,u.y1+.9)}
+        // pulou em cima do arbusto: ele desaparece e dá uma moeda-estrela
+        u.gone=true;if(u.m){lvGroup.remove(u.m);u.m=null}
+        spawnCoinPop(ux,u.y1+.9);SFX.monkeyHit();P.vy=JUMP*.55;P.inv=.3;
       }else if(P.inv<=0&&dx<1.05&&u.hitCd<=0){
         u.hitCd=1.1;damagePlayer(1);
       }
@@ -1032,6 +1053,14 @@ function updateSandCoins(){
       sc.taken=true;spawnCoinPop(sc.x,sc.y);
       if(sc.mesh){fxGroup.remove(sc.mesh);sc.mesh=null}
     }
+  }
+}
+function updateSpecialStar(dt){
+  const sc=LV.specialStar;if(!sc||sc.taken)return;
+  if(sc.mesh){sc.mesh.rotation.y+=dt*2.4;sc.mesh.position.y=sc.y+Math.sin(gt*2)*.15}
+  if(Math.abs(P.x-sc.x)<1&&Math.abs(P.y-sc.y)<1.3){
+    sc.taken=true;spawnCoinPop(sc.x,sc.y);toast('🌟 Moeda especial coletada!');SFX.frag();
+    if(sc.mesh){fxGroup.remove(sc.mesh);sc.mesh=null}
   }
 }
 let logThrown=[];
@@ -1141,6 +1170,7 @@ addEventListener('keydown',e=>{
   const k=e.code;
   if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(k))e.preventDefault();
   if(k==='KeyP'||k==='Escape'){togglePause();return}
+  if(!e.repeat&&k==='KeyX'){useStarPower();return}
   if(!e.repeat&&k==='KeyC'){useWindPower();return}
   if(!e.repeat&&k==='KeyQ'){togglePower();return}
   if(!e.repeat&&k==='KeyE'){useLog();return}
@@ -1191,8 +1221,8 @@ function near(px){
   for(const e of LV.elevs)if(!(e.sudden&&!e.on)&&e.x1>px-4&&e.x0<px+4)_near.push(e);
   return _near;
 }
-function ovl(c,x,y,h){return x+HW>c.x0+1e-4&&x-HW<c.x1-1e-4&&y<c.y1-.001&&y+h>c.y0+.001}
-function blockedStand(){for(const c of near(P.x))if(P.x+HW>c.x0&&P.x-HW<c.x1&&c.y1>P.y+.1&&c.y0<P.y+H_ST)return true;return false}
+function ovl(c,x,y,h){return!c.gone&&x+HW>c.x0+1e-4&&x-HW<c.x1-1e-4&&y<c.y1-.001&&y+h>c.y0+.001}
+function blockedStand(){for(const c of near(P.x))if(!c.gone&&P.x+HW>c.x0&&P.x-HW<c.x1&&c.y1>P.y+.1&&c.y0<P.y+H_ST)return true;return false}
 function updateMovers(){
   for(const m of LV.movers){
     const s=Math.sin(gt*m.om+m.ph),nx=m.k==='h'?m.cx+s*m.amp:m.cx,ny=m.k==='v'?m.cy+s*m.amp:m.cy;
@@ -1229,7 +1259,7 @@ function zoneBase(x){for(const z of LV.zones)if(x>=z.x0&&x<=z.x1)return z.base;r
 function step(dt){
   gt+=dt;
   updateMovers();updateElevs(dt);
-  if(state==='playing'){updateMonkeys(dt);updateBananas(dt);updateStars(dt);updateBirds(dt);updatePowers(dt);updateQBlocks(dt);updateCoinsFX(dt);updateLogThrown(dt);updateBushes(dt);updateSandCoins()}
+  if(state==='playing'){updateMonkeys(dt);updateBananas(dt);updateStars(dt);updateBirds(dt);updatePowers(dt);updateQBlocks(dt);updateCoinsFX(dt);updateLogThrown(dt);updateBushes(dt);updateSandCoins();updateSpecialStar(dt)}
   const I=readInput();
   if(state==='enter'){enterT+=dt;if(enterT>1.15)beginTunnel()}
   if(P.inv>0)P.inv-=dt;
@@ -1307,6 +1337,7 @@ function loadLevel(i){
   gameScene.add(pc.root);pc.root.visible=true;pc.root.scale.set(1,1,1);
   for(const lp of LV.logPickups){if(!lp.taken){lp.mesh=makeLogMesh();lp.mesh.position.set(lp.x,lp.y,0);fxGroup.add(lp.mesh)}}
   for(const sc of LV.sandCoins){if(!sc.taken){sc.mesh=makeCoinMesh();sc.mesh.position.set(sc.x,sc.y,0);fxGroup.add(sc.mesh)}}
+  if(LV.specialStar&&!LV.specialStar.taken){LV.specialStar.mesh=makeSpecialStarMesh();LV.specialStar.mesh.position.set(LV.specialStar.x,LV.specialStar.y,0);fxGroup.add(LV.specialStar.mesh)}
   streamLevel(P.x);setHearts();
   $('lvname').textContent='Fase '+(i+1)+' · '+LV.L.n;$('bar').style.width='0%';
   toast('Fase '+(i+1)+' — '+LV.L.n);musicStart(i);
