@@ -52,7 +52,8 @@ let W=0,H=0;
 let skyGrad=null;
 function resize(){
   W=cv.width=innerWidth;H=cv.height=innerHeight;
-  ctx.imageSmoothingEnabled=true;
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.lineJoin='round';ctx.lineCap='round';
   // gradiente do céu calculado só quando a tela muda de tamanho (economiza trabalho por frame)
   skyGrad=ctx.createLinearGradient(0,0,0,H);
   skyGrad.addColorStop(0,'#5bb8ec');skyGrad.addColorStop(.7,'#a6e0f5');skyGrad.addColorStop(1,'#cdeffa');
@@ -301,11 +302,17 @@ function drawMan(x,y,dir,legSwing){
   ctx.beginPath();ctx.roundRect(6,38,8,18-lo,4);ctx.fill();outline(2.5);
   ctx.beginPath();ctx.roundRect(18,38,8,18+lo,4);ctx.fill();outline(2.5);
   // short branco
-  ctx.fillStyle='#fff';
+  const shortsG=ctx.createLinearGradient(4,30,4,42);
+  shortsG.addColorStop(0,'#fff');shortsG.addColorStop(1,'#e6e6e6');
+  ctx.fillStyle=shortsG;
   ctx.beginPath();ctx.roundRect(4,30,24,12,5);ctx.fill();outline(2.5);
   // blusa vermelha
-  ctx.fillStyle='#e02525';
+  const shirtG=ctx.createLinearGradient(2,10,2,32);
+  shirtG.addColorStop(0,'#ff4a4a');shirtG.addColorStop(1,'#c81818');
+  ctx.fillStyle=shirtG;
   ctx.beginPath();ctx.roundRect(2,10,28,22,8);ctx.fill();outline(3);
+  ctx.fillStyle='rgba(255,255,255,.25)';
+  ctx.beginPath();ctx.roundRect(5,12,7,14,4);ctx.fill();
   // braços
   ctx.fillStyle='#e02525';
   ctx.beginPath();ctx.roundRect(-2,13,6,16,3);ctx.fill();outline(2.5);
@@ -363,8 +370,11 @@ function drawBear(m){
   ctx.fillStyle='#7a5232';
   ctx.beginPath();ctx.roundRect(10,-24+walk,16,24,8);ctx.fill();outline(3);
   ctx.beginPath();ctx.roundRect(m.w-26,-24-walk,16,24,8);ctx.fill();outline(3);
-  ctx.fillStyle='#8a6238';
+  const bodyG=ctx.createRadialGradient(m.w*.4,-m.h*.62,4,m.w/2,-m.h*.5,m.w*.5);
+  bodyG.addColorStop(0,'#a8825a');bodyG.addColorStop(1,'#7a5836');
+  ctx.fillStyle=bodyG;
   ctx.beginPath();ctx.ellipse(m.w/2,-m.h*.5,m.w*.42,m.h*.34,0,0,Math.PI*2);ctx.fill();outline(4);
+  ctx.fillStyle='#8a6238';
   ctx.beginPath();ctx.ellipse(m.w*.78,-m.h*.78,m.h*.26,m.h*.24,0,0,Math.PI*2);ctx.fill();outline(3.5);
   ctx.fillStyle='#5c3f22';
   ctx.beginPath();ctx.ellipse(m.w*.9,-m.h*.86,7,7,0,0,Math.PI*2);ctx.fill();outline(2.5);
@@ -378,12 +388,18 @@ function drawBear(m){
   ctx.restore();
 }
 function drawMonster(m){
+  drawShadow(m.x-camX,GROUND_Y+2,m.w*.42);
   if(m.type==='bug')drawBug(m);else drawBear(m);
+}
+function drawShadow(x,y,w){
+  ctx.fillStyle='rgba(0,0,0,.22)';
+  ctx.beginPath();ctx.ellipse(x,y,w,w*.28,0,0,Math.PI*2);ctx.fill();
 }
 function drawPlayer(){
   if(P.inv>0&&Math.floor(t*14)%2===0)return;
   const moving=P.onGround&&Math.abs(P.vx)>10;
   const legSwing=moving?Math.sin(t*14):0;
+  drawShadow(P.x-camX+16,GROUND_Y+2,15);
   drawMan(P.x-camX,P.y,P.dir,legSwing);
 }
 function drawGoalFlag(){
