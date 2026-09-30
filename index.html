@@ -56,6 +56,22 @@ body.touch.ingame #touch{display:block}
 #toast.show{animation:tst 2.6s ease forwards}
 @keyframes tst{0%{opacity:0;transform:translate(-50%,10px)}12%,80%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-8px)}}
 #fade{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:40}
+#warn{position:fixed;left:50%;top:9%;transform:translateX(-50%);padding:.4em 1em;border-radius:16px;background:#ff3b30;color:#fff;font-weight:800;font-size:clamp(14px,2.6vw,22px);text-shadow:0 2px 4px rgba(0,0,0,.4);z-index:15;text-align:center;max-width:92vw;animation:warnPulse 1s infinite}
+@keyframes warnPulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.06)}}
+#pwrhud{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);transform:translateX(-50%);display:flex;gap:10px;align-items:center;z-index:6;pointer-events:none}
+.pwr{display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.4);padding:5px 9px;border-radius:14px;border:2px solid rgba(255,255,255,.55)}
+.pwr.eq{border-color:#fff;box-shadow:0 0 8px #fff}
+.pwr .ic{font-size:18px}
+.pwr .kk{font-size:11px;color:#fff;opacity:.8;font-weight:800}
+.pbarbg{width:64px;height:10px;border-radius:6px;background:rgba(0,0,0,.4);overflow:hidden}
+.pbarbg i{display:block;height:100%;width:100%}
+#starbar{background:linear-gradient(90deg,#ffe066,#ff9f1c)}
+#windbar{background:linear-gradient(90deg,#9be8ff,#4fa8e0)}
+#fragc{color:#fff;font-weight:800;font-size:14px;text-shadow:0 2px 4px rgba(0,0,0,.6);background:rgba(0,0,0,.35);padding:5px 9px;border-radius:12px}
+.pwrTouch{position:absolute;pointer-events:auto;width:clamp(50px,13vmin,72px);height:clamp(50px,13vmin,72px);border-radius:50%;border:3px solid rgba(255,255,255,.85);font-size:clamp(18px,4.4vmin,24px);background:rgba(255,207,77,.55);color:#3a2412;touch-action:none}
+.pwrTouch:active,.pwrTouch.dn{background:rgba(255,160,40,.9)}
+#starBtn{right:calc(env(safe-area-inset-right,0px) + clamp(102px,28vmin,166px));bottom:calc(env(safe-area-inset-bottom,0px) + 104px)}
+#windBtn{right:calc(env(safe-area-inset-right,0px) + clamp(158px,40vmin,236px));bottom:calc(env(safe-area-inset-bottom,0px) + 34px)}
 @media (prefers-reduced-motion:reduce){.card{transition:none}}
 </style>
 </head>
@@ -65,7 +81,16 @@ body.touch.ingame #touch{display:block}
 <div id="hud" class="off">
   <div id="hearts"></div>
   <div id="lvinfo"><b id="lvname"></b><div class="bar"><i id="bar"></i></div></div>
-  <button class="btn" id="pbtn" aria-label="Pausa">Ⅱ Pausa</button>
+  <div style="display:flex;gap:8px;pointer-events:auto">
+    <button class="btn" id="qbtn" style="padding:.4em .6em" aria-label="Trocar poder">🔄</button>
+    <button class="btn" id="pbtn" aria-label="Pausa">Ⅱ Pausa</button>
+  </div>
+</div>
+<div id="warn" class="off">⚠️ PÁSSARO VAI CAIR! DESVIE! ⚠️</div>
+<div id="pwrhud" class="off">
+  <div class="pwr eq" data-k="star"><span class="ic">⭐</span><div class="pbarbg"><i id="starbar"></i></div><span class="kk">X</span></div>
+  <div class="pwr" data-k="wind" id="windwrap"><span class="ic">🌬️</span><div class="pbarbg"><i id="windbar"></i></div><span class="kk">C</span></div>
+  <div id="fragc">✨ 0/6</div>
 </div>
 
 <div id="title" class="screen">
@@ -101,7 +126,11 @@ body.touch.ingame #touch{display:block}
       <li><b>Celular e tablet:</b> setas à esquerda para andar e agachar, botão PULAR à direita, PAUSA no canto de cima.</li>
       <li>Passagens baixas: agache para passar.</li>
       <li>Elevadores: fique em cima da plataforma e ela leva você para uma camada nova lá no alto.</li>
-      <li>Você tem 3 corações e só perde um se cair no vazio.</li>
+      <li>Você tem 3 corações e perde um se cair no vazio, levar cocô de pássaro, banana de macaco ou encostar num macaco.</li>
+      <li><b>🐦 Pássaros:</b> quando aparecer o aviso vermelho "VAI CAIR", corra para longe da marcação no chão antes dos 3 segundos acabarem!</li>
+      <li><b>🐒 Macacos:</b> jogam banana em você. Use a tecla <b>X</b> para atirar estrelas e derrotá-los. Macacos fracos têm 15% de vida e os fortes 20%.</li>
+      <li>Derrote macacos para ganhar fragmentos ✨ e desbloquear o poder do vento (<b>C</b>). Use <b>Q</b> para trocar o poder em destaque.</li>
+      <li>Os poderes têm uma barrinha de energia: espere ela encher um pouco para usar de novo.</li>
     </ul>
     <button class="btn" id="bBack">Voltar</button>
   </div>
@@ -122,6 +151,8 @@ body.touch.ingame #touch{display:block}
     <button data-k="right" aria-label="Direita">→</button>
   </div>
   <button id="jump">PULAR</button>
+  <button id="starBtn" class="pwrTouch" aria-label="Poder da estrela">⭐</button>
+  <button id="windBtn" class="pwrTouch" aria-label="Poder do vento">🌬️</button>
 </div>
 <div id="toast"></div>
 <div id="fade"></div>
@@ -134,8 +165,8 @@ const $=id=>document.getElementById(id);
 const TAU=Math.PI*2;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const params=new URLSearchParams(location.search);
-// Cada fase dura 30 min por padrão. Para testar mais rápido: ?min=3 (minutos por fase) e ?fase=5 (fase inicial)
-const MIN_PER_LEVEL=clamp(parseFloat(params.get('min'))||30,0.3,30);
+// Cada fase dura 20 min por padrão. Para testar mais rápido: ?min=3 (minutos por fase) e ?fase=5 (fase inicial)
+const MIN_PER_LEVEL=clamp(parseFloat(params.get('min'))||20,0.3,20);
 const START_LEVEL=clamp(parseInt(params.get('fase'))||1,1,12);
 function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 
@@ -160,7 +191,13 @@ const SFX={
   fall(){tone(520,.7,'sawtooth',.12,'sf',80)},
   click(){tone(660,.08,'triangle',.2,'sf')},
   elev(){tone(190,.25,'triangle',.14,'sf',240)},
-  portal(){for(let i=0;i<6;i++)tone(440*Math.pow(1.335,i*.8),.5,'sine',.13,'sf',null,i*.13)}
+  portal(){for(let i=0;i<6;i++)tone(440*Math.pow(1.335,i*.8),.5,'sine',.13,'sf',null,i*.13)},
+  hurt(){tone(180,.22,'sawtooth',.22,'sf',90)},
+  alert(){tone(880,.11,'square',.16,'sf',880)},
+  starShot(){tone(700,.14,'sine',.16,'sf',1400)},
+  wind(){tone(240,.4,'sine',.15,'sf',480);tone(180,.4,'triangle',.1,'sf',90,.05)},
+  monkeyHit(){tone(320,.12,'square',.18,'sf',120)},
+  frag(){tone(900,.1,'triangle',.18,'sf',1400);tone(1200,.15,'sine',.15,'sf',1800,.08)}
 };
 let musT=null,musNext=0,musStep=0,musSeed=0;
 const PENT=[0,2,4,7,9,12,14];
@@ -402,13 +439,24 @@ function genLevel(i){
   const total=MIN_PER_LEVEL*210,others=L.o.replace('E','').length,zl=Math.max(60,(total-120)/others);
   for(const ch of L.o){if(ch==='E')pE();else{G(R(8,12));map[ch](zl)}}
   G(14);lv.portal={x:x+2,y};G(16);closeZone();lv.end=x;
+  // Macacos: ficam em cima de trechos de chão firme e jogam banana. Vida: fraco=15%, forte=20%
+  lv.monkeys=[];
+  {
+    const mr=mulberry(5000+i*97);
+    for(const s of lv.solids){
+      if(s.k==='g'&&(s.x1-s.x0)>9&&s.x0>10&&mr()<.22){
+        const strong=mr()<.4,mx=s.x0+(s.x1-s.x0)*(.3+mr()*.4);
+        lv.monkeys.push({x:mx,y:s.y1,hp:strong?20:15,maxHp:strong?20:15,strong,alive:true,cd:1+mr()*2.4,hitT:0,mesh:null});
+      }
+    }
+  }
   lv.bk=new Map();
   for(const s of lv.solids){for(let b=Math.floor(s.x0/BS);b<=Math.floor(s.x1/BS);b++){let a=lv.bk.get(b);if(!a){a=[];lv.bk.set(b,a)}a.push(s)}}
   return lv;
 }
 
 /* ================= AMBIENTE / MESHES DE FASE ================= */
-let LV=null,lvGroup=null,envGroup=null,mats=null,portalG=null;
+let LV=null,lvGroup=null,envGroup=null,fxGroup=null,mats=null,portalG=null;
 const shadowBlob=new THREE.Mesh(new THREE.CircleGeometry(1,20),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.28,depthWrite:false}));
 shadowBlob.rotation.x=-Math.PI/2;gameScene.add(shadowBlob);
 function skyTexture(p){
@@ -418,8 +466,8 @@ function skyTexture(p){
 }
 function buildEnv(i){
   const p=PAL[i];
-  if(lvGroup)gameScene.remove(lvGroup);if(envGroup)gameScene.remove(envGroup);
-  lvGroup=new THREE.Group();envGroup=new THREE.Group();gameScene.add(lvGroup,envGroup);
+  if(lvGroup)gameScene.remove(lvGroup);if(envGroup)gameScene.remove(envGroup);if(fxGroup)gameScene.remove(fxGroup);
+  lvGroup=new THREE.Group();envGroup=new THREE.Group();fxGroup=new THREE.Group();gameScene.add(lvGroup,envGroup,fxGroup);
   gameScene.background=skyTexture(p);gameScene.fog=new THREE.Fog(new THREE.Color(p.b),70,300);
   const gc=new THREE.Color(p.g);
   mats={dirt:PM(p.d),grass:PM(p.g),plat:PM(p.p),platTop:PM(new THREE.Color(p.p).offsetHSL(0,0,.12)),ceil:PM(new THREE.Color(p.d).offsetHSL(0,-.05,-.12)),
@@ -512,6 +560,55 @@ function streamLevel(cx){
     else if(!vis&&s.m){lvGroup.remove(s.m);s.m=null}
   }
 }
+/* ================= MACACOS / PÁSSAROS / PODERES: meshes ================= */
+function makeMonkeyMesh(strong){
+  const g=new THREE.Group(),s=strong?1.25:1;
+  const bodyM=PM(strong?0x6b4a2e:0x8a6239);
+  g.add(mesh(SPH,bodyM,0,1.0*s,0,.55*s,.65*s,.5*s));
+  g.add(mesh(SPH,bodyM,0,1.7*s,0,.4*s));
+  g.add(mesh(SPH,PM(0xd9b98a),0,1.66*s,.32*s,.22*s,.22*s,.12*s));
+  g.add(mesh(SPH,bodyM,-.32*s,1.75*s,0,.14*s),mesh(SPH,bodyM,.32*s,1.75*s,0,.14*s));
+  g.add(mesh(CYL,bodyM,0,.35*s,-.5*s,.1*s,1.1*s,.1*s));
+  const barBg=new THREE.Mesh(new THREE.PlaneGeometry(1,.14),new THREE.MeshBasicMaterial({color:0x222222}));
+  const barFg=new THREE.Mesh(new THREE.PlaneGeometry(1,.1),new THREE.MeshBasicMaterial({color:0x4be05a}));
+  barBg.position.set(0,2.35*s,.01);barFg.position.set(0,2.35*s,.02);
+  g.add(barBg,barFg);g.userData={bar:barFg};
+  return g;
+}
+function makeBananaMesh(){const g=new THREE.Group();g.add(mesh(CYL,PM(0xf5d742),0,0,0,.18,.9,.18));return g}
+function makeBirdMesh(){
+  const g=new THREE.Group(),bm=PM(0x3a3a4a),wingM=PM(0x55566a);
+  g.add(mesh(SPH,bm,0,0,0,.5,.32,.28));g.add(mesh(CONE4,bm,0,0,.4,.14,.3,.14));
+  const wl=mesh(BOX,wingM,-.5,.05,0,.75,.08,.32),wr=mesh(BOX,wingM,.5,.05,0,.75,.08,.32);
+  g.add(wl,wr);g.userData={wingL:wl,wingR:wr};return g;
+}
+function makeMarkerMesh(){
+  const ring=new THREE.Mesh(new THREE.RingGeometry(.7,1.05,24),new THREE.MeshBasicMaterial({color:0xff3b30,transparent:true,opacity:.85,side:THREE.DoubleSide,depthWrite:false}));
+  ring.rotation.x=-Math.PI/2;return ring;
+}
+function makePoopMesh(){return mesh(SPH,PM(0x5a3a22),0,0,0,.34,.4,.34)}
+function makeStarMesh(){
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(),color:0xfff27a,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));
+  s.scale.set(1.6,1.6,1);return s;
+}
+function groundHeightAt(x){
+  let gy=zoneBase(x);
+  for(const c of near(x))if(c.k!=='c'&&x+.01>c.x0&&x-.01<c.x1)gy=Math.max(gy,c.y1);
+  return gy;
+}
+function streamMonkeys(cx){
+  const a=cx-75,b=cx+100;
+  for(const m of LV.monkeys){
+    const vis=m.alive&&m.x>a&&m.x<b;
+    if(vis&&!m.mesh){m.mesh=makeMonkeyMesh(m.strong);fxGroup.add(m.mesh)}
+    else if((!vis||!m.alive)&&m.mesh){fxGroup.remove(m.mesh);m.mesh=null}
+    if(m.mesh){
+      m.mesh.position.set(m.x,m.y,0);
+      const jolt=m.hitT>0?Math.sin(m.hitT*50)*.12:0;m.mesh.rotation.z=jolt;
+      m.mesh.userData.bar.scale.x=Math.max(.02,m.hp/m.maxHp);
+    }
+  }
+}
 const wrap=(v,hf)=>((v+hf)%(2*hf)+2*hf)%(2*hf)-hf;
 function updateEnv(cx,cy,t){
   for(const h of envGroup.hills){h.position.x=cx+wrap(h.userData.bx-cx*h.userData.f,130);h.position.y=cy-24}
@@ -528,10 +625,141 @@ let selIdx=1;
 const kinds=['ritinha','estrela','sol'];
 const SPEED=7.2,GRAV=34,JUMP=13.6,HW=.62,H_ST=3,H_CR=2;
 
+/* ================= PODERES / MACACOS / PÁSSAROS: estado ================= */
+let bananas=[],stars=[],birds=[],birdTimer=6,alertTimer=0;
+const powers={
+  fragments:0,fragGoal:6,equipped:'star',
+  star:{unlocked:true,energy:1,max:1,regen:1/9,cost:.34,dmg:8},
+  wind:{unlocked:false,energy:1,max:1,regen:1/7,cost:.5}
+};
+function useStarPower(){
+  if(state!=='playing')return;
+  const p=powers.star;if(!p.unlocked||p.energy<p.cost)return;
+  p.energy-=p.cost;
+  const sm=makeStarMesh();fxGroup.add(sm);
+  stars.push({x:P.x+P.dir*.8,y:P.y+1.1,vx:P.dir*20,life:1.1,hit:false,mesh:sm});
+  SFX.starShot();
+}
+function useWindPower(){
+  if(state!=='playing')return;
+  const p=powers.wind;if(!p.unlocked||p.energy<p.cost)return;
+  p.energy-=p.cost;SFX.wind();
+  for(let i=bananas.length-1;i>=0;i--){if(Math.abs(bananas[i].x-P.x)<9){if(bananas[i].mesh)fxGroup.remove(bananas[i].mesh);bananas.splice(i,1)}}
+  for(const b of birds){if((b.phase==='warn'||b.phase==='drop')&&Math.abs(b.dropX-P.x)<11){
+    if(b.marker){fxGroup.remove(b.marker);b.marker=null}if(b.poop){fxGroup.remove(b.poop);b.poop=null}b.phase='gone';
+  }}
+  if(!birds.some(o=>o.phase==='warn'))$('warn').classList.add('off');
+  P.vx+=P.dir*6;P.inv=Math.max(P.inv,.6);
+}
+function togglePower(){
+  powers.equipped=powers.equipped==='star'?'wind':'star';
+  document.querySelectorAll('.pwr').forEach(e=>e.classList.toggle('eq',e.dataset.k===powers.equipped));
+  SFX.click();
+}
+function updatePowers(dt){
+  for(const k of['star','wind']){const p=powers[k];if(p.energy<p.max)p.energy=Math.min(p.max,p.energy+p.regen*dt)}
+  $('starbar').style.width=(powers.star.energy*100)+'%';
+  $('windwrap').style.opacity=powers.wind.unlocked?1:.35;
+  $('windbar').style.width=(powers.wind.energy*100)+'%';
+}
+function spawnFragment(x,y){
+  powers.fragments++;SFX.frag();
+  toast('✨ Fragmento coletado! ('+powers.fragments+'/'+powers.fragGoal+')');
+  $('fragc').textContent='✨ '+powers.fragments+'/'+powers.fragGoal;
+  if(!powers.wind.unlocked&&powers.fragments>=powers.fragGoal){powers.wind.unlocked=true;toast('🌬️ Poder do Vento desbloqueado! Tecla C');}
+}
+function hitPlayer(){
+  if(state!=='playing'||P.inv>0)return;
+  lives--;SFX.hurt();setHearts();P.inv=1.3;
+  if(lives<=0){
+    state='over';toast('Acabaram os corações! Recomeçando a fase…');
+    setTimeout(()=>{if(state!=='over')return;lives=3;loadLevel(lvIdx);state='playing'},2300);
+  }
+}
+function updateMonkeys(dt){
+  for(const m of LV.monkeys){
+    if(!m.alive)continue;
+    if(m.hitT>0)m.hitT-=dt;
+    if(Math.abs(m.x-P.x)<1&&P.inv<=0)hitPlayer();
+    if(Math.abs(m.x-P.x)>28)continue;
+    m.cd-=dt;
+    if(m.cd<=0){
+      m.cd=1.6+Math.random()*1.7;
+      const bm=makeBananaMesh();fxGroup.add(bm);
+      bananas.push({x:m.x,y:m.y+1.4,vx:(P.x<m.x?-1:1)*8,vy:5,life:3,mesh:bm});
+    }
+  }
+}
+function updateBananas(dt){
+  for(let i=bananas.length-1;i>=0;i--){
+    const b=bananas[i];
+    b.vy-=GRAV*.6*dt;b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
+    if(b.mesh){b.mesh.position.set(b.x,b.y,0);b.mesh.rotation.z+=dt*6}
+    let dead=b.life<=0||b.y<-20;
+    if(!dead&&Math.abs(b.x-P.x)<.9&&Math.abs(b.y-P.y-1)<1.1&&P.inv<=0){hitPlayer();dead=true}
+    if(dead){if(b.mesh)fxGroup.remove(b.mesh);bananas.splice(i,1)}
+  }
+}
+function updateStars(dt){
+  for(let i=stars.length-1;i>=0;i--){
+    const s=stars[i];s.x+=s.vx*dt;s.life-=dt;
+    if(s.mesh)s.mesh.position.set(s.x,s.y,0);
+    if(!s.hit)for(const m of LV.monkeys){
+      if(m.alive&&Math.abs(m.x-s.x)<1.1&&Math.abs(m.x-P.x)<30){
+        m.hp-=powers.star.dmg;m.hitT=.25;s.hit=true;s.life=0;SFX.monkeyHit();
+        if(m.hp<=0){m.alive=false;spawnFragment(m.x,m.y+1)}
+        break;
+      }
+    }
+    if(s.life<=0){if(s.mesh)fxGroup.remove(s.mesh);stars.splice(i,1)}
+  }
+}
+function updateBirds(dt){
+  birdTimer-=dt;
+  if(birdTimer<=0&&state==='playing'&&!birds.some(b=>b.phase==='warn'||b.phase==='drop')){
+    birdTimer=Math.max(5,11-LV.L.d*5)+Math.random()*4;
+    const dropX=P.x+9+Math.random()*9,gy=groundHeightAt(dropX);
+    const bm=makeBirdMesh();fxGroup.add(bm);
+    birds.push({x:dropX-16,y:gy+11+Math.random()*3,dropX,gy,t:0,phase:'fly',mesh:bm});
+  }
+  for(let i=birds.length-1;i>=0;i--){
+    const b=birds[i];b.t+=dt;
+    if(b.mesh){
+      b.mesh.position.set(b.x,b.y,0);b.mesh.rotation.z=Math.sin(b.t*10)*.15;
+      const wd=b.mesh.userData;if(wd.wingL){wd.wingL.rotation.z=Math.sin(b.t*16)*.6;wd.wingR.rotation.z=-Math.sin(b.t*16)*.6}
+    }
+    if(b.phase==='fly'){
+      b.x+=(b.dropX-b.x)*Math.min(1,dt*2.5);
+      if(Math.abs(b.x-b.dropX)<.25){
+        b.phase='warn';b.wt=0;
+        b.marker=makeMarkerMesh();b.marker.position.set(b.dropX,b.gy+.03,0);fxGroup.add(b.marker);
+        b.poop=makePoopMesh();b.poop.position.set(b.dropX,b.y,0);fxGroup.add(b.poop);
+        $('warn').classList.remove('off');alertTimer=0;
+      }
+    }else if(b.phase==='warn'){
+      b.wt+=dt;const k=clamp(b.wt/3,0,1);
+      if(b.marker)b.marker.scale.setScalar(1+.18*Math.sin(b.t*9));
+      if(b.poop)b.poop.position.y=b.y+(b.gy-b.y)*k;
+      if(b.wt>=3){
+        if(Math.abs(P.x-b.dropX)<1.25&&P.inv<=0)hitPlayer();
+        if(b.marker){fxGroup.remove(b.marker);b.marker=null}
+        if(b.poop){fxGroup.remove(b.poop);b.poop=null}
+        b.phase='gone';
+        if(!birds.some(o=>o.phase==='warn'))$('warn').classList.add('off');
+      }
+    }else{b.x+=13*dt}
+    if(b.phase==='gone'&&b.x>P.x+95){if(b.mesh)fxGroup.remove(b.mesh);birds.splice(i,1)}
+  }
+  if(birds.some(b=>b.phase==='warn')){alertTimer-=dt;if(alertTimer<=0){SFX.alert();alertTimer=.4}}
+}
+
 addEventListener('keydown',e=>{
   const k=e.code;
   if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(k))e.preventDefault();
   if(k==='KeyP'||k==='Escape'){togglePause();return}
+  if(!e.repeat&&k==='KeyX'){useStarPower();return}
+  if(!e.repeat&&k==='KeyC'){useWindPower();return}
+  if(!e.repeat&&k==='KeyQ'){togglePower();return}
   if(state==='title'){
     if(k==='ArrowLeft')selIdx=(selIdx+2)%3;
     else if(k==='ArrowRight')selIdx=(selIdx+1)%3;
@@ -563,6 +791,11 @@ const jb=$('jump');
 jb.addEventListener('pointerdown',e=>{e.preventDefault();jb.classList.add('dn');jumpState.buf=.14});
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>jb.addEventListener(ev,()=>jb.classList.remove('dn')));
 document.addEventListener('contextmenu',e=>e.preventDefault());
+const starBtn=$('starBtn'),windBtn=$('windBtn');
+starBtn.addEventListener('pointerdown',e=>{e.preventDefault();starBtn.classList.add('dn');useStarPower()});
+windBtn.addEventListener('pointerdown',e=>{e.preventDefault();windBtn.classList.add('dn');useWindPower()});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>{starBtn.addEventListener(ev,()=>starBtn.classList.remove('dn'));windBtn.addEventListener(ev,()=>windBtn.classList.remove('dn'))});
+$('qbtn').addEventListener('click',()=>togglePower());
 
 /* ================= FÍSICA ================= */
 const _near=[];
@@ -611,6 +844,7 @@ function zoneBase(x){for(const z of LV.zones)if(x>=z.x0&&x<=z.x1)return z.base;r
 function step(dt){
   gt+=dt;
   updateMovers();updateElevs(dt);
+  if(state==='playing'){updateMonkeys(dt);updateBananas(dt);updateStars(dt);updateBirds(dt);updatePowers(dt)}
   const I=readInput();
   if(state==='enter'){enterT+=dt;if(enterT>1.15)beginTunnel()}
   if(P.inv>0)P.inv-=dt;
@@ -674,6 +908,7 @@ function loseLife(){
 /* ================= FLUXO: FASES E PORTAL ================= */
 function loadLevel(i){
   lvIdx=i;LV=genLevel(i);buildEnv(i);
+  bananas=[];stars=[];birds=[];birdTimer=6+Math.random()*4;alertTimer=0;$('warn').classList.add('off');
   updateMovers();for(const m of LV.movers){m.dx=m.dy=0}
   P={x:6,y:.02,vx:0,vy:0,dir:1,ground:false,gobj:null,crouch:false,h:H_ST,coy:0,maxX:6,safe:{x:6,y:.02},inv:0};
   gt=0;enterT=0;camFace=1;camX=6+5.5;camY=3;
@@ -691,7 +926,7 @@ function beginTunnel(){
   tunnel.col=LV.L.final?.12:null;setFade(1);fadeTo(0,2.2);
 }
 function endTunnel(){
-  if(LV.L.final){state='end';setFade(0);$('endmsg').classList.remove('off');$('hud').classList.add('off');document.body.classList.remove('ingame');return}
+  if(LV.L.final){state='end';setFade(0);$('endmsg').classList.remove('off');$('hud').classList.add('off');$('pwrhud').classList.add('off');$('warn').classList.add('off');document.body.classList.remove('ingame');return}
   tunnelScene.remove(pc.root);
   loadLevel(lvIdx+1);state='playing';setFade(1);fadeTo(0,1.2);
 }
@@ -784,13 +1019,16 @@ function renderTitle(dt,t){
 function pick(i){auInit();SFX.click();startGame(kinds[i])}
 function startGame(kind){
   pc=makeChar(kind);lives=3;
-  $('title').classList.add('off');$('hud').classList.remove('off');document.body.classList.add('ingame');
+  powers.fragments=0;powers.equipped='star';powers.star.unlocked=true;powers.star.energy=1;powers.wind.unlocked=false;powers.wind.energy=1;
+  $('fragc').textContent='✨ 0/'+powers.fragGoal;
+  document.querySelectorAll('.pwr').forEach(e=>e.classList.toggle('eq',e.dataset.k==='star'));
+  $('title').classList.add('off');$('hud').classList.remove('off');$('pwrhud').classList.remove('off');document.body.classList.add('ingame');
   loadLevel(START_LEVEL-1);state='playing';setFade(1);fadeTo(0,2.5);
 }
 function goTitle(){
   musicStop();
   if(pc){gameScene.remove(pc.root);tunnelScene.remove(pc.root)}
-  ['pause','how','endmsg'].forEach(id=>$(id).classList.add('off'));$('hud').classList.add('off');document.body.classList.remove('ingame');
+  ['pause','how','endmsg'].forEach(id=>$(id).classList.add('off'));$('hud').classList.add('off');$('pwrhud').classList.add('off');$('warn').classList.add('off');document.body.classList.remove('ingame');
   $('title').classList.remove('off');state='title';setFade(0);
   for(const k in keys)keys[k]=false;touch.left=touch.right=touch.down=0;
 }
@@ -831,7 +1069,7 @@ function renderGame(dt,t){
   camX+=(tx-camX)*Math.min(1,dt*4);camY+=(ty-camY)*Math.min(1,dt*3.2);
   const asp=W/H,zc=clamp(Math.max(20,21/(.932*asp)),20,46);
   camera.position.set(camX-camFace*4.5,camY+4.2,zc);camera.lookAt(camX+camFace*1.5,camY-.3,0);
-  streamLevel(camX);updateEnv(camX,camY,t);
+  streamLevel(camX);updateEnv(camX,camY,t);streamMonkeys(camX);
   $('bar').style.width=(clamp(p.maxX/LV.end,0,1)*100)+'%';
   renderer.render(gameScene,camera);
 }
