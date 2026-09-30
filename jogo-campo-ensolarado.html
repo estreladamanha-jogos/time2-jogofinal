@@ -8,11 +8,15 @@
 :root{--ink:#fff3d4;--btn:#ffcf4d;--btn-ink:#3a2412}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
 html,body{height:100%;margin:0;overflow:hidden;background:#7ec8f0;font-family:"Trebuchet MS",system-ui,sans-serif;touch-action:none}
-canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated}
 #hud{position:fixed;left:0;right:0;top:0;padding:14px;display:flex;justify-content:space-between;color:#2a3a1a;font-weight:800;font-size:clamp(16px,3vw,24px);text-shadow:0 2px 3px rgba(255,255,255,.5);pointer-events:none;z-index:5}
-#msg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);color:#20301a;font-weight:800;font-size:clamp(20px,5vw,40px);text-align:center;text-shadow:0 3px 6px rgba(255,255,255,.6);z-index:10}
+#hud.off{display:none}
+#msg{position:fixed;left:50%;top:14%;transform:translateX(-50%);color:#20301a;font-weight:800;font-size:clamp(18px,4.2vw,34px);text-align:center;text-shadow:0 3px 6px rgba(255,255,255,.7);z-index:10}
 #msg.off{display:none}
-#msg span{display:block;font-size:.5em;font-weight:700;margin-top:10px}
+#msg span{display:block;font-size:.5em;font-weight:700;margin-top:8px}
+#names{position:fixed;left:0;right:0;bottom:12%;display:flex;justify-content:space-evenly;pointer-events:none;z-index:9}
+#names.off{display:none}
+#names div{color:#fff;font-weight:800;font-size:clamp(16px,3.4vw,26px);text-shadow:0 3px 6px rgba(0,0,0,.6);background:rgba(0,0,0,.25);padding:4px 18px;border-radius:10px}
 #touch{display:none;position:fixed;inset:0;pointer-events:none;z-index:6}
 body.touch #touch{display:block}
 .pad{position:absolute;left:14px;bottom:14px;display:grid;grid-template-columns:70px 70px;grid-template-rows:70px;gap:8px}
@@ -28,6 +32,7 @@ body.touch #touch{display:block}
   <div id="score">🪙 0</div>
 </div>
 <div id="msg" class="off"><div id="msgTxt"></div><span id="msgSub"></span></div>
+<div id="names" class="off"><div>JACOB</div><div>HELENA</div></div>
 <div id="touch">
   <div class="pad">
     <button id="bl">←</button>
@@ -39,10 +44,19 @@ body.touch #touch{display:block}
 <script>
 (function(){
 'use strict';
-const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const cv=document.getElementById('c');
 const $=id=>document.getElementById(id);
 let W=0,H=0;
-function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight}
+// canvas pequeno (baixa resolução) ampliado sem suavização = pixel art nítido e consistente
+const PIX=2;
+const off=document.createElement('canvas'),ctx=off.getContext('2d');
+const rctx=cv.getContext('2d');
+let OW=0,OH=0;
+function resize(){
+  W=cv.width=innerWidth;H=cv.height=innerHeight;
+  OW=off.width=Math.ceil(W/PIX);OH=off.height=Math.ceil(H/PIX);
+  rctx.imageSmoothingEnabled=false;ctx.imageSmoothingEnabled=false;
+}
 addEventListener('resize',resize);resize();
 if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
 
@@ -64,28 +78,45 @@ const coins=blocks.map(b=>({x:b.x+b.w/2,y:b.y-30,got:false}));
 const bushes=[150,340,780,1080,1480,1820,2180,2520].map(x=>({x}));
 const trees=[260,700,1150,1600,1950,2350,2680].map((x,i)=>({x,tall:i%2===0}));
 const clouds=[100,500,950,1400,1850,2300,2700].map((x,i)=>({x0:x,y:60+((i*37)%90),spd:8+((i*13)%12)}));
-// meta: a mulher esperando no fim da fase
+// meta: o outro personagem esperando no fim da fase
 const goal={x:LEVEL_END,y:GROUND_Y-84,w:34,h:84};
 
 /* ===== estado ===== */
-let state='title',score=0,camX=0,t=0,keys={},touchL=0,touchR=0,jumpBuf=0;
+let state='select',selIndex=0,selectedChar='jacob',score=0,camX=0,t=0,keys={},touchL=0,touchR=0,jumpBuf=0;
 let P={x:60,y:GROUND_Y-84,vx:0,vy:0,w:32,h:64,onGround:false,coy:0,dir:1};
 function resetPlayer(){P.x=60;P.y=GROUND_Y-84;P.vx=0;P.vy=0;P.onGround=false;P.coy=0;camX=0}
 function setScore(){$('score').textContent='🪙 '+score}
 function showMsg(txt,sub){$('msgTxt').textContent=txt;$('msgSub').textContent=sub||'';$('msg').classList.remove('off')}
 function hideMsg(){$('msg').classList.add('off')}
-function start(){
+function showSelectUI(){
+  showMsg('☀️ Selecione seu personagem','Toque em Jacob ou em Helena — ou use ← → e ESPAÇO');
+  $('names').classList.remove('off');
+  $('hud').classList.add('off');
+}
+function start(charKey){
+  selectedChar=charKey;
   score=0;setScore();resetPlayer();coins.forEach(c=>c.got=false);
   state='playing';hideMsg();
+  $('names').classList.add('off');
+  $('hud').classList.remove('off');
 }
-showMsg('☀️ Campo Ensolarado','Toque ou aperte ESPAÇO para começar — suba nos blocos e pegue as moedas!');
+showSelectUI();
 addEventListener('keydown',e=>{
-  if((state==='title'||state==='win')&&(e.code==='Space'||e.code==='Enter')){start();return}
+  if(state==='select'){
+    if(e.code==='ArrowLeft')selIndex=0;
+    if(e.code==='ArrowRight')selIndex=1;
+    if(e.code==='Space'||e.code==='Enter'){start(selIndex===0?'jacob':'helena')}
+    return;
+  }
+  if(state==='win'&&(e.code==='Space'||e.code==='Enter')){state='select';showSelectUI();return}
   keys[e.code]=true;
   if(!e.repeat&&(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'))jumpBuf=.12;
 });
 addEventListener('keyup',e=>{keys[e.code]=false});
-cv.addEventListener('pointerdown',()=>{if(state==='title'||state==='win')start()});
+cv.addEventListener('pointerdown',e=>{
+  if(state==='select'){start(e.clientX<W/2?'jacob':'helena');return}
+  if(state==='win'){state='select';showSelectUI();}
+});
 $('bl').addEventListener('pointerdown',e=>{e.preventDefault();touchL=1});
 $('br').addEventListener('pointerdown',e=>{e.preventDefault();touchR=1});
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>{
@@ -129,26 +160,25 @@ function update(dt){
   }
   if(P.y>H+300){resetPlayer()}
   if(rectsOverlap(pb,goal)){
-    state='win';showMsg('💛 Você a encontrou!','Moedas: '+score+' — Toque ou aperte ESPAÇO para jogar de novo');
+    const foundName=selectedChar==='jacob'?'a Helena':'o Jacob';
+    state='win';showMsg('💛 Você encontrou '+foundName+'!','Moedas: '+score+' — Toque ou aperte ESPAÇO pra escolher de novo');
+    $('names').classList.add('off');
   }
   const targetCam=Math.max(0,Math.min(LEVEL_END-W+90,P.x-W*.4));
   camX+=(targetCam-camX)*Math.min(1,dt*4);
 }
 
-/* ===== desenho ===== */
-function drawSky(){
+/* ===== desenho (tudo em baixa resolução = pixel art nítido) ===== */
+function drawSky(cam){
   const g=ctx.createLinearGradient(0,0,0,H);
   g.addColorStop(0,'#5bb8ec');g.addColorStop(.7,'#a6e0f5');g.addColorStop(1,'#cdeffa');
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-  // sol
   ctx.fillStyle='#ffdd55';
   ctx.beginPath();ctx.arc(W*.82,H*.16,46,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='rgba(255,221,85,.35)';
   ctx.beginPath();ctx.arc(W*.82,H*.16,64,0,Math.PI*2);ctx.fill();
-  // nuvens
   for(const c of clouds){
-    const x=((c.x0-camX*.25+c.spd*t*4)%(LEVEL_END+600)+LEVEL_END+600)%(LEVEL_END+600)-camX*0;
-    const sx=c.x0-camX*.25;
+    const sx=c.x0-cam*.25;
     if(sx<-160||sx>W+160)continue;
     drawCloud(sx,c.y);
   }
@@ -162,20 +192,20 @@ function drawCloud(x,y){
   ctx.ellipse(x+8,y-16,20,16,0,0,Math.PI*2);
   ctx.fill();
 }
-function drawGround(){
+function drawGround(cam){
   ctx.fillStyle='#8a5a2e';
   ctx.fillRect(0,GROUND_Y+18,W,H-GROUND_Y);
   ctx.fillStyle='#5ea832';
   ctx.fillRect(0,GROUND_Y,W,22);
   ctx.fillStyle='#4a8f26';
-  for(let x=-((camX*1)%20);x<W+20;x+=20){
+  for(let x=-((cam*1)%20);x<W+20;x+=20){
     ctx.beginPath();
     ctx.moveTo(x,GROUND_Y+2);ctx.lineTo(x+6,GROUND_Y-6);ctx.lineTo(x+12,GROUND_Y+2);
     ctx.fill();
   }
 }
-function drawTree(x,tall){
-  const bx=x-camX;if(bx<-80||bx>W+80)return;
+function drawTree(x,tall,cam){
+  const bx=x-cam;if(bx<-80||bx>W+80)return;
   const y=GROUND_Y,h=tall?150:110,tw=16;
   ctx.fillStyle='#6b4226';ctx.fillRect(bx-tw/2,y-h*.45,tw,h*.45);
   ctx.fillStyle='#2f8a3a';
@@ -184,8 +214,8 @@ function drawTree(x,tall){
   ctx.beginPath();ctx.arc(bx-24,y-h*.45-14,28,0,Math.PI*2);ctx.fill();
   ctx.beginPath();ctx.arc(bx+26,y-h*.45-16,26,0,Math.PI*2);ctx.fill();
 }
-function drawBush(x){
-  const bx=x-camX;if(bx<-60||bx>W+60)return;
+function drawBush(x,cam){
+  const bx=x-cam;if(bx<-60||bx>W+60)return;
   const y=GROUND_Y;
   ctx.fillStyle='#2f8a3a';
   ctx.beginPath();ctx.arc(bx-14,y-6,16,0,Math.PI*2);ctx.fill();
@@ -194,8 +224,8 @@ function drawBush(x){
   ctx.fillStyle='#3aa348';
   ctx.beginPath();ctx.arc(bx,y-8,14,0,Math.PI*2);ctx.fill();
 }
-function drawBlock(pf){
-  const bx=pf.x-camX;
+function drawBlock(pf,cam){
+  const bx=pf.x-cam;
   ctx.fillStyle='#8a5a2e';ctx.fillRect(bx,pf.y,pf.w,pf.h);
   ctx.fillStyle='#5ea832';ctx.fillRect(bx,pf.y,pf.w,10);
   ctx.fillStyle='#4a8f26';
@@ -205,24 +235,24 @@ function drawBlock(pf){
   ctx.strokeStyle='rgba(0,0,0,.2)';ctx.lineWidth=2;
   ctx.strokeRect(bx,pf.y+10,pf.w,pf.h-10);
 }
-function drawCoin(c){
+function drawCoin(c,cam){
   if(c.got)return;
-  const x=c.x-camX;if(x<-30||x>W+30)return;
+  const x=c.x-cam;if(x<-30||x>W+30)return;
   const bob=Math.sin(t*3+c.x)*3;
   ctx.fillStyle='#ffcf4d';
   ctx.beginPath();ctx.ellipse(x,c.y+bob,9,9,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='#e8a92a';
   ctx.beginPath();ctx.ellipse(x,c.y+bob,5,5,0,0,Math.PI*2);ctx.fill();
 }
-// homem: cabelo cacheado, barba, blusa vermelha, faixa vermelha, short branco, sapato branco
-function drawMan(x,y,dir,walk){
+// homem (Jacob): cabelo cacheado, barba, blusa vermelha, faixa vermelha, short branco, sapato branco
+function drawMan(x,y,dir,legSwing){
   ctx.save();
   if(dir<0){ctx.translate(x+32,y);ctx.scale(-1,1);}else{ctx.translate(x,y);}
-  const legOff=walk?4:0;
+  const lo=legSwing*4;
   ctx.fillStyle='#fff';
-  ctx.fillRect(4,54,10,10-legOff);ctx.fillRect(18,54,10,10+legOff);
+  ctx.fillRect(4,54,10,10-lo);ctx.fillRect(18,54,10,10+lo);
   ctx.fillStyle='#5a3a20';
-  ctx.fillRect(6,38,8,18-legOff);ctx.fillRect(18,38,8,18+legOff);
+  ctx.fillRect(6,38,8,18-lo);ctx.fillRect(18,38,8,18+lo);
   ctx.fillStyle='#fff';
   ctx.fillRect(4,30,24,12);
   ctx.fillStyle='#c81a1a';
@@ -242,13 +272,13 @@ function drawMan(x,y,dir,walk){
   ctx.fillStyle='#1a1410';ctx.fillRect(21,1,3,3);
   ctx.restore();
 }
-// mulher: cabelo loiro, olhos azuis, vestido rosa, sapato branco
-function drawWoman(x,y,dir,walk){
+// mulher (Helena): cabelo loiro, olhos azuis, vestido rosa, sapato branco
+function drawWoman(x,y,dir,legSwing){
   ctx.save();
   if(dir<0){ctx.translate(x+30,y);ctx.scale(-1,1);}else{ctx.translate(x,y);}
-  const legOff=walk?3:0;
+  const lo=legSwing*3;
   ctx.fillStyle='#fff';
-  ctx.fillRect(4,60,9,8-legOff);ctx.fillRect(17,60,9,8+legOff);
+  ctx.fillRect(4,60,9,8-lo);ctx.fillRect(17,60,9,8+lo);
   ctx.fillStyle='#f2b8cc';
   ctx.beginPath();
   ctx.moveTo(6,26);ctx.lineTo(24,26);ctx.lineTo(28,60);ctx.lineTo(2,60);
@@ -268,29 +298,57 @@ function drawWoman(x,y,dir,walk){
   ctx.restore();
 }
 function drawPlayer(){
-  const walk=P.onGround&&Math.abs(P.vx)>10?Math.floor(t*10)%2:0;
-  drawMan(P.x-camX,P.y,P.dir,walk);
+  const moving=P.onGround&&Math.abs(P.vx)>10;
+  const legSwing=moving?Math.sin(t*14):0;
+  const fn=selectedChar==='jacob'?drawMan:drawWoman;
+  fn(P.x-camX,P.y,P.dir,legSwing);
 }
-function drawGoalWoman(){
+function drawGoalChar(){
   const bob=Math.sin(t*2)*3;
-  drawWoman(goal.x-camX,goal.y+bob,-1,0);
+  const fn=selectedChar==='jacob'?drawWoman:drawMan;
+  fn(goal.x-camX,goal.y+bob,-1,Math.sin(t*2)*.4);
 }
 function draw(){
-  drawSky();
-  for(const tr of trees)drawTree(tr.x,tr.tall);
-  drawGround();
-  for(const b of bushes)drawBush(b.x);
-  for(const bl of blocks)drawBlock(bl);
-  for(const c of coins)drawCoin(c);
-  drawGoalWoman();
+  drawSky(camX);
+  for(const tr of trees)drawTree(tr.x,tr.tall,camX);
+  drawGround(camX);
+  for(const b of bushes)drawBush(b.x,camX);
+  for(const bl of blocks)drawBlock(bl,camX);
+  for(const c of coins)drawCoin(c,camX);
+  drawGoalChar();
   drawPlayer();
+}
+
+/* ===== tela de seleção de personagem ===== */
+function drawSelect(){
+  drawSky(0);
+  drawGround(0);
+  const cx1=W*.3,cx2=W*.7,baseY=GROUND_Y,idle1=Math.sin(t*2)*.3,idle2=Math.sin(t*2+1)*.3;
+  // pedestais
+  ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.beginPath();ctx.ellipse(cx1,baseY+6,46,12,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(cx2,baseY+6,46,12,0,0,Math.PI*2);ctx.fill();
+  // destaque do selecionado
+  const hx=selIndex===0?cx1:cx2;
+  const glow=6+Math.sin(t*5)*3;
+  ctx.strokeStyle='rgba(255,221,85,.9)';ctx.lineWidth=4;
+  ctx.beginPath();ctx.ellipse(hx,baseY+6,52+glow,16+glow*.3,0,0,Math.PI*2);ctx.stroke();
+  drawMan(cx1-16,baseY-84,1,idle1);
+  drawWoman(cx2-15,baseY-84,-1,idle2);
 }
 
 let last=performance.now();
 function frame(now){
   requestAnimationFrame(frame);
   const dt=Math.min(.033,(now-last)/1000);last=now;
-  update(dt);draw();
+  update(dt);
+  ctx.clearRect(0,0,OW,OH);
+  ctx.save();
+  ctx.scale(1/PIX,1/PIX);
+  if(state==='select')drawSelect();else draw();
+  ctx.restore();
+  rctx.clearRect(0,0,W,H);
+  rctx.drawImage(off,0,0,OW,OH,0,0,W,H);
 }
 requestAnimationFrame(frame);
 })();
