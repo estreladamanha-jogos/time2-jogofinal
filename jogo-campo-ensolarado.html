@@ -47,18 +47,18 @@ addEventListener('resize',resize);resize();
 if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
 
 /* ===== mundo da fase 1: campo ensolarado ===== */
-const GRAV=1500,JUMP=-620,SPEED=270,GROUND_Y=560;
+const GRAV=1500,JUMP=-700,SPEED=270,GROUND_Y=560;
 const LEVEL_END=2800;
 const platforms=[{x:0,y:GROUND_Y,w:LEVEL_END+400,h:260,ground:true}];
-// blocos de grama flutuantes pra subir e pegar moedas
+// blocos de grama flutuantes pra subir e pegar moedas (alturas alcançáveis com o pulo)
 const blocks=[
-  {x:420,y:GROUND_Y-140,w:70,h:36},
-  {x:560,y:GROUND_Y-260,w:70,h:36},
-  {x:900,y:GROUND_Y-160,w:70,h:36},
-  {x:1250,y:GROUND_Y-140,w:70,h:36},{x:1330,y:GROUND_Y-240,w:70,h:36},
-  {x:1650,y:GROUND_Y-180,w:70,h:36},
-  {x:2000,y:GROUND_Y-140,w:70,h:36},{x:2080,y:GROUND_Y-260,w:70,h:36},
-  {x:2400,y:GROUND_Y-160,w:70,h:36},
+  {x:420,y:GROUND_Y-110,w:70,h:36},
+  {x:560,y:GROUND_Y-200,w:70,h:36},
+  {x:900,y:GROUND_Y-120,w:70,h:36},
+  {x:1250,y:GROUND_Y-110,w:70,h:36},{x:1330,y:GROUND_Y-200,w:70,h:36},
+  {x:1650,y:GROUND_Y-130,w:70,h:36},
+  {x:2000,y:GROUND_Y-110,w:70,h:36},{x:2080,y:GROUND_Y-200,w:70,h:36},
+  {x:2400,y:GROUND_Y-120,w:70,h:36},
 ];
 const coins=blocks.map(b=>({x:b.x+b.w/2,y:b.y-30,got:false}));
 const bushes=[150,340,780,1080,1480,1820,2180,2520].map(x=>({x}));
