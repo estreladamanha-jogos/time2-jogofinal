@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Jogo da Masmorra</title>
+<style>
+:root{--ink:#fff3d4;--btn:#ffcf4d;--btn-ink:#3a2412}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{height:100%;margin:0;overflow:hidden;background:#0a0808;font-family:"Trebuchet MS",system-ui,sans-serif;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{position:fixed;left:0;right:0;top:0;padding:14px;display:flex;justify-content:space-between;color:#fff;font-weight:800;font-size:clamp(16px,3vw,24px);text-shadow:0 2px 4px rgba(0,0,0,.6);pointer-events:none;z-index:5}
+#msg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);color:#fff;font-weight:800;font-size:clamp(20px,5vw,40px);text-align:center;text-shadow:0 3px 8px rgba(0,0,0,.7);z-index:10}
+#msg.off{display:none}
+#msg span{display:block;font-size:.5em;font-weight:700;margin-top:10px}
+#touch{display:none;position:fixed;inset:0;pointer-events:none;z-index:6}
+body.touch #touch{display:block}
+.pad{position:absolute;left:14px;bottom:14px;display:grid;grid-template-columns:70px 70px;grid-template-rows:70px;gap:8px}
+.pad button,#jbtn{pointer-events:auto;border:3px solid rgba(255,255,255,.7);background:rgba(120,90,50,.55);color:#fff3d4;font-weight:800;font-size:28px;border-radius:18px;touch-action:none}
+.pad button:active,#jbtn:active{background:rgba(160,110,50,.9)}
+#jbtn{position:fixed;right:18px;bottom:24px;width:100px;height:100px;border-radius:50%;font-size:18px;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="lv">Fase 1 · Masmorra</div>
+  <div id="lives">❤️❤️❤️</div>
+</div>
+<div id="msg" class="off"><div id="msgTxt"></div><span id="msgSub"></span></div>
+<div id="touch">
+  <div class="pad">
+    <button id="bl">←</button>
+    <button id="br">→</button>
+  </div>
+  <button id="jbtn">PULAR</button>
+</div>
+
+<script>
+(function(){
+'use strict';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let W=0,H=0;
+function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight}
+addEventListener('resize',resize);resize();
+if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
+
+/* ===== mundo da fase 1: masmorra ===== */
+const GRAV=1500,JUMP=-620,SPEED=280,GROUND_Y=620;
+// plataformas de pedra: {x,y,w,h}
+const platforms=[
+  {x:0,y:GROUND_Y,w:480,h:200},
+  {x:560,y:GROUND_Y-30,w:200,h:30},
+  {x:850,y:GROUND_Y-140,w:180,h:30},
+  {x:1120,y:GROUND_Y-30,w:220,h:30},
+  {x:1430,y:GROUND_Y,w:260,h:200},
+  {x:1780,y:GROUND_Y-90,w:170,h:30},
+  {x:2030,y:GROUND_Y-210,w:170,h:30},
+  {x:2280,y:GROUND_Y-90,w:170,h:30},
+  {x:2540,y:GROUND_Y,w:220,h:200},
+  {x:2850,y:GROUND_Y-40,w:210,h:30},
+  {x:3150,y:GROUND_Y,w:500,h:200},
+];
+// espinhos: {x,y,w,h} — tocar tira 1 vida
+const spikes=[
+  {x:490,y:GROUND_Y-30,w:60,h:30},
+  {x:1050,y:GROUND_Y-30,w:60,h:30},
+  {x:1360,y:GROUND_Y-30,w:60,h:30},
+  {x:1960,y:GROUND_Y-30,w:60,h:30},
+  {x:2760,y:GROUND_Y-30,w:80,h:30},
+  {x:3080,y:GROUND_Y-30,w:60,h:30},
+];
+// tochas decorativas (não colidem): {x,y}
+const torches=[
+  {x:120,y:GROUND_Y-150},{x:700,y:GROUND_Y-170},{x:1500,y:GROUND_Y-150},
+  {x:1850,y:GROUND_Y-230},{x:2600,y:GROUND_Y-150},{x:3250,y:GROUND_Y-150}
+];
+const goal={x:3500,y:GROUND_Y-120,w:60,h:120};
+const LEVEL_END=3650;
+
+/* ===== estado ===== */
+let state='title',lives=3,camX=0,t=0,keys={},touchL=0,touchR=0,jumpBuf=0;
+let P={x:60,y:GROUND_Y-70,vx:0,vy:0,w:34,h:50,onGround:false,coy:0,inv:0,dir:1};
+function resetPlayer(){P.x=60;P.y=GROUND_Y-70;P.vx=0;P.vy=0;P.onGround=false;P.coy=0;P.inv=1;camX=0}
+function setLives(){$('lives').textContent='❤️'.repeat(Math.max(0,lives))+'🖤'.repeat(Math.max(0,3-lives))}
+
+function showMsg(txt,sub){$('msgTxt').textContent=txt;$('msgSub').textContent=sub||'';$('msg').classList.remove('off')}
+function hideMsg(){$('msg').classList.add('off')}
+
+function start(){
+  lives=3;setLives();resetPlayer();state='playing';hideMsg();
+}
+showMsg('🕯️ Jogo da Masmorra','Toque ou aperte ESPAÇO para começar — Fase 1: cuidado com os espinhos!');
+addEventListener('keydown',e=>{
+  if((state==='title'||state==='over'||state==='win')&&(e.code==='Space'||e.code==='Enter')){start();return}
+  keys[e.code]=true;
+  if(!e.repeat&&(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'))jumpBuf=.12;
+});
+addEventListener('keyup',e=>{keys[e.code]=false});
+cv.addEventListener('pointerdown',()=>{
+  if(state==='title'||state==='over'||state==='win')start();
+});
+$('bl').addEventListener('pointerdown',e=>{e.preventDefault();touchL=1});
+$('br').addEventListener('pointerdown',e=>{e.preventDefault();touchR=1});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>{
+  $('bl').addEventListener(ev,()=>touchL=0);
+  $('br').addEventListener(ev,()=>touchR=0);
+});
+$('jbtn').addEventListener('pointerdown',e=>{e.preventDefault();jumpBuf=.12});
+
+function rectsOverlap(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+
+function update(dt){
+  t+=dt;
+  if(state!=='playing')return;
+  if(jumpBuf>0)jumpBuf-=dt;
+  if(P.inv>0)P.inv-=dt;
+  const left=keys.ArrowLeft||keys.KeyA||touchL,right=keys.ArrowRight||keys.KeyD||touchR;
+  const ax=(right?1:0)-(left?1:0);
+  if(ax)P.dir=ax;
+  const want=ax*SPEED;
+  const acc=P.onGround?2600:1400;
+  if(P.vx<want)P.vx=Math.min(want,P.vx+acc*dt);else if(P.vx>want)P.vx=Math.max(want,P.vx-acc*dt);
+  P.x+=P.vx*dt;
+  P.x=Math.max(P.x,10);
+  if(P.onGround)P.coy=.1;else P.coy-=dt;
+  if(jumpBuf>0&&P.coy>0){P.vy=JUMP;P.onGround=false;P.coy=0;jumpBuf=0}
+  P.vy+=GRAV*dt;
+  const oy=P.y;
+  P.y+=P.vy*dt;
+  P.onGround=false;
+  for(const pf of platforms){
+    if(P.x+P.w>pf.x&&P.x<pf.x+pf.w){
+      if(P.vy>=0&&oy+P.h<=pf.y+10&&P.y+P.h>=pf.y){
+        P.y=pf.y-P.h;P.vy=0;P.onGround=true;
+      }
+    }
+  }
+  // espinhos
+  if(P.inv<=0){
+    const pb={x:P.x,y:P.y,w:P.w,h:P.h};
+    for(const sp of spikes){
+      if(rectsOverlap(pb,sp)){
+        lives--;setLives();P.inv=1.2;P.vy=-420;P.vx=-P.dir*180;
+        if(lives<=0){state='over';showMsg('💀 Você caiu na armadilha','Toque ou aperte ESPAÇO para tentar de novo')}
+        break;
+      }
+    }
+  }
+  // caiu no vazio
+  if(P.y>H+200){
+    lives--;setLives();
+    if(lives<=0){state='over';showMsg('💀 Você caiu na armadilha','Toque ou aperte ESPAÇO para tentar de novo')}
+    else{resetPlayer();P.inv=1.2}
+  }
+  // chegou na meta
+  const pb={x:P.x,y:P.y,w:P.w,h:P.h};
+  if(rectsOverlap(pb,goal)){
+    state='win';showMsg('🗝️ Fase 1 completa!','Toque ou aperte ESPAÇO para jogar de novo');
+  }
+  // câmera segue o jogador
+  const targetCam=Math.max(0,Math.min(LEVEL_END-W+80,P.x-W*.4));
+  camX+=(targetCam-camX)*Math.min(1,dt*4);
+}
+
+/* ===== desenho ===== */
+function drawBackground(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#1a1410');g.addColorStop(1,'#33241a');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // blocos de pedra da parede ao fundo
+  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;
+  const bw=90,bh=60;
+  for(let row=0;row*bh<H+bh;row++){
+    const off=row%2?bw/2:0;
+    for(let x=-bw+((camX*.3)%bw)*-1+off;x<W+bw;x+=bw){
+      ctx.strokeRect(x,row*bh,bw,bh);
+    }
+  }
+  // tochas com luz tremulante
+  for(const tc of torches){
+    const x=tc.x-camX,y=tc.y;
+    if(x<-60||x>W+60)continue;
+    const flick=6+Math.sin(t*9+tc.x)*3+Math.random()*2;
+    const glow=ctx.createRadialGradient(x,y,0,x,y,70+flick);
+    glow.addColorStop(0,'rgba(255,170,60,.55)');glow.addColorStop(1,'rgba(255,170,60,0)');
+    ctx.fillStyle=glow;ctx.beginPath();ctx.arc(x,y,70+flick,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#5a4230';ctx.fillRect(x-5,y,10,34);
+    ctx.fillStyle='#ffcf4d';
+    ctx.beginPath();ctx.ellipse(x,y-6-flick*.3,7,12+flick*.5,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff6b2e';
+    ctx.beginPath();ctx.ellipse(x,y-4-flick*.2,4,7+flick*.3,0,0,Math.PI*2);ctx.fill();
+  }
+}
+function drawPlatform(pf){
+  ctx.fillStyle='#4a3d33';
+  ctx.fillRect(pf.x-camX,pf.y,pf.w,pf.h);
+  ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=2;
+  const bw=44;
+  for(let x=0;x<pf.w;x+=bw)ctx.strokeRect(pf.x-camX+x,pf.y,Math.min(bw,pf.w-x),Math.min(26,pf.h));
+  ctx.fillStyle='#6b5a4a';
+  ctx.fillRect(pf.x-camX,pf.y,pf.w,6);
+}
+function drawSpike(sp){
+  ctx.fillStyle='#8a8a92';
+  const n=Math.max(1,Math.round(sp.w/26));
+  const sw=sp.w/n;
+  for(let i=0;i<n;i++){
+    const bx=sp.x-camX+i*sw;
+    ctx.beginPath();
+    ctx.moveTo(bx,sp.y+sp.h);
+    ctx.lineTo(bx+sw/2,sp.y);
+    ctx.lineTo(bx+sw,sp.y+sp.h);
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#4a4a50';ctx.lineWidth=1.5;ctx.stroke();
+  }
+}
+function drawGoal(){
+  ctx.fillStyle='#3a2a1a';
+  ctx.fillRect(goal.x-camX-6,goal.y-10,goal.w+12,goal.h+20);
+  ctx.fillStyle='#120a08';
+  ctx.beginPath();ctx.ellipse(goal.x-camX+goal.w/2,goal.y+goal.h*.5,goal.w*.36,goal.h*.46,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(255,207,77,.5)';
+  ctx.beginPath();ctx.ellipse(goal.x-camX+goal.w/2,goal.y+goal.h*.5,goal.w*.2,goal.h*.26,0,0,Math.PI*2);ctx.fill();
+}
+function drawPlayer(){
+  if(P.inv>0&&Math.floor(t*14)%2===0)return;
+  const x=P.x-camX,y=P.y;
+  ctx.fillStyle='#d9b98a';
+  ctx.fillRect(x,y,P.w,P.h);
+  ctx.fillStyle='#3a2412';
+  const eyeX=P.dir>0?x+P.w-11:x+5;
+  ctx.fillRect(eyeX,y+10,6,6);
+}
+function draw(){
+  drawBackground();
+  for(const pf of platforms)drawPlatform(pf);
+  for(const sp of spikes)drawSpike(sp);
+  drawGoal();
+  drawPlayer();
+}
+
+let last=performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.033,(now-last)/1000);last=now;
+  update(dt);draw();
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
