@@ -62,8 +62,14 @@ const banners=[260,760,1260,1760,2260,2760,3160].map(x=>({x}));
 const portraits=[500,1020,1520,2020,2520,3020].map(x=>({x}));
 // mesas com cadeiras ao fundo (decoração, não colide)
 const tableSets=[150,1150,1900,2650].map(x=>({x}));
-// manchas de sangue no chão
-const bloodSpots=[380,700,1080,1480,1900,2220,2600,2980].map(x=>({x,r:22+((x*7)%20)}));
+// manchas de sangue no chão (mais manchas espalhadas)
+const bloodSpots=[380,700,1080,1480,1900,2220,2600,2980,180,560,940,1300,1680,2060,2440,2820,3100].map(x=>({x,r:18+((x*7)%26)}));
+// corpos caídos, infectados pelo zumbi (decoração, não atacam nem machucam)
+const fallenBodies=[320,860,1340,1760,2140,2520,2960].map((x,i)=>({x,flip:i%2===0}));
+// coisas caídas: móveis quebrados, pratos e taças jogadas no chão
+const debris=[240,600,960,1230,1620,2000,2380,2760,3060].map((x,i)=>({x,kind:i%3}));
+// colunas de pedra ao fundo (paralaxe = efeito de 3D falso)
+const columns=[100,500,900,1300,1700,2100,2500,2900,3300].map(x=>({x}));
 // zumbis: {x,y,patrolMin,patrolMax,spd,dir,alive,hp}
 const zombiesData=[
   {x:480,pMin:420,pMax:640},
@@ -170,25 +176,55 @@ function update(dt){
 }
 
 /* ===== desenho ===== */
+function drawColumn(x){
+  // coluna de pedra ao fundo, mais lenta que o resto = sensação de profundidade (3D falso)
+  const bx=x-camX*.5;if(bx<-70||bx>W+70)return;
+  const top=H*.06,w=46,h=H*.62;
+  const g=ctx.createLinearGradient(bx-w/2,0,bx+w/2,0);
+  g.addColorStop(0,'#241a12');g.addColorStop(.45,'#4a3a28');g.addColorStop(.55,'#4a3a28');g.addColorStop(1,'#1c140d');
+  ctx.fillStyle=g;
+  ctx.fillRect(bx-w/2,top,w,h);
+  ctx.fillStyle='#544433';ctx.fillRect(bx-w/2-8,top-14,w+16,16); // capitel
+  ctx.fillStyle='#544433';ctx.fillRect(bx-w/2-8,top+h,w+16,16); // base
+}
 function drawBackground(){
   const g=ctx.createLinearGradient(0,0,0,H);
   g.addColorStop(0,'#1a130f');g.addColorStop(1,'#33241a');
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-  // parede de pedra
-  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;
+  // colunas distantes (paralaxe lenta) dão sensação de 3D falso
+  for(const c of columns)drawColumn(c.x);
+  // parede de pedra com relevo (luz em cima, sombra embaixo de cada tijolo = efeito 3D falso)
   const bw=86,bh=58;
   for(let row=0;row*bh<H*.65+bh;row++){
     const off=row%2?bw/2:0;
-    for(let x=-bw+((camX*.3)%bw)*-1+off;x<W+bw;x+=bw)ctx.strokeRect(x,row*bh,bw,bh);
+    for(let x=-bw+((camX*.3)%bw)*-1+off;x<W+bw;x+=bw){
+      ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(x+2,row*bh+2,bw-4,4);
+      ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(x+2,row*bh+bh-6,bw-4,4);
+      ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;ctx.strokeRect(x,row*bh,bw,bh);
+    }
   }
 }
+function seededRand(n){const s=Math.sin(n*12.9898)*43758.5453;return s-Math.floor(s)}
 function drawWindowSlit(x){
   const bx=x-camX;if(bx<-40||bx>W+40)return;
   const y=H*.14;
   ctx.fillStyle='#3a3026';ctx.fillRect(bx-24,y,48,120);
   const g=ctx.createLinearGradient(0,y,0,y+110);
-  g.addColorStop(0,'#3a4a6a');g.addColorStop(1,'#1a2438');
+  g.addColorStop(0,'#0a0f22');g.addColorStop(1,'#1a2438');
   ctx.fillStyle=g;ctx.fillRect(bx-18,y+6,36,100);
+  // céu estrelado dentro da janela
+  ctx.save();
+  ctx.beginPath();ctx.rect(bx-18,y+6,36,100);ctx.clip();
+  ctx.fillStyle='#e9e4c8';
+  ctx.beginPath();ctx.arc(bx+8,y+22,8,0,Math.PI*2);ctx.fill(); // lua
+  for(let i=0;i<14;i++){
+    const rx=seededRand(x*3+i)*36-18,ry=seededRand(x*7+i+50)*100+6;
+    const rs=seededRand(x*11+i)*1.4+.6;
+    ctx.globalAlpha=.5+seededRand(x*13+i)*.5;
+    ctx.fillRect(bx+rx,y+ry,rs,rs);
+  }
+  ctx.globalAlpha=1;
+  ctx.restore();
 }
 function drawBanner(x){
   const bx=x-camX;if(bx<-60||bx>W+60)return;
@@ -236,6 +272,47 @@ function drawBlood(bx,r){
   ctx.fillStyle='rgba(90,10,10,.55)';
   ctx.beginPath();ctx.ellipse(x,GROUND_Y-4,r,r*.35,0,0,Math.PI*2);ctx.fill();
   ctx.beginPath();ctx.ellipse(x+r*.6,GROUND_Y-2,r*.4,r*.16,0,0,Math.PI*2);ctx.fill();
+}
+function drawFallenBody(b){
+  const x=b.x-camX;if(x<-60||x>W+60)return;
+  const dir=b.flip?-1:1;
+  const y=GROUND_Y;
+  // mancha de sangue embaixo do corpo
+  ctx.fillStyle='rgba(90,10,10,.5)';
+  ctx.beginPath();ctx.ellipse(x,y-3,34,11,0,0,Math.PI*2);ctx.fill();
+  ctx.save();ctx.translate(x,y);ctx.scale(dir,1);
+  ctx.fillStyle='#4a5a3a'; // pele infectada, esverdeada, bem estilizada (sem detalhe gráfico)
+  ctx.fillRect(-26,-16,40,14); // tronco deitado
+  ctx.beginPath();ctx.arc(-30,-10,9,0,Math.PI*2);ctx.fill(); // cabeça
+  ctx.fillRect(12,-14,18,8); // perna
+  ctx.fillRect(28,-12,14,7);
+  ctx.fillRect(-10,-20,16,7); // braço caído
+  ctx.fillStyle='#1a1410';ctx.fillRect(-33,-12,3,3); // olho fechado
+  ctx.restore();
+}
+function drawDebris(d){
+  const x=d.x-camX;if(x<-50||x>W+50)return;
+  const y=GROUND_Y;
+  if(d.kind===0){
+    // cadeira quebrada
+    ctx.fillStyle='#3a2a1a';
+    ctx.save();ctx.translate(x,y);ctx.rotate(.5);
+    ctx.fillRect(-6,-30,10,34);ctx.fillRect(-6,-4,26,7);ctx.fillRect(16,-18,7,20);
+    ctx.restore();
+  }else if(d.kind===1){
+    // prato e taça caídos
+    ctx.fillStyle='#8a8a92';
+    ctx.beginPath();ctx.ellipse(x,y-4,14,5,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#caa24a';
+    ctx.save();ctx.translate(x+22,y-3);ctx.rotate(1.4);
+    ctx.fillRect(-4,-10,8,10);ctx.restore();
+  }else{
+    // machado/tocha caída no chão
+    ctx.save();ctx.translate(x,y-4);ctx.rotate(.3);
+    ctx.fillStyle='#3a2a1a';ctx.fillRect(-24,-3,40,5);
+    ctx.fillStyle='#8a8a92';ctx.fillRect(12,-9,12,14);
+    ctx.restore();
+  }
 }
 function drawPlatform(pf){
   ctx.fillStyle='#4a3d33';
@@ -296,6 +373,8 @@ function draw(){
   for(const pf of platforms)drawPlatform(pf);
   for(const ts of tableSets)drawTableSet(ts.x);
   for(const b of bloodSpots)drawBlood(b.x,b.r);
+  for(const d of debris)drawDebris(d);
+  for(const fb of fallenBodies)drawFallenBody(fb);
   for(const z of zombies)drawZombie(z);
   drawGoal();
   drawPlayer();
