@@ -28,7 +28,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #hint{margin:8px 0 0;font-size:clamp(11px,1.8vw,15px);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6);text-align:center}
 #hud{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 10px) calc(env(safe-area-inset-right,0px) + 12px) 0 calc(env(safe-area-inset-left,0px) + 12px);display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:5}
 #hearts{font-size:clamp(26px,5vw,40px);line-height:1;text-shadow:0 2px 4px rgba(0,0,0,.4);letter-spacing:.05em}
-.h{color:#000;opacity:.35}.h.on{color:var(--heart);opacity:1}
+.hwrap{position:relative;display:inline-block}
+.hbg{color:#000;opacity:.35}
+.hfg{position:absolute;left:0;top:0;overflow:hidden;white-space:nowrap;color:var(--heart)}
 #coinc{color:#fff;font-weight:800;font-size:clamp(15px,3vw,22px);text-shadow:0 2px 4px rgba(0,0,0,.4)}
 #lvinfo{text-align:center;color:#fff;text-shadow:0 2px 5px rgba(0,0,0,.6);font-size:clamp(13px,2.2vw,18px);min-width:34vw}
 .bar{height:8px;border-radius:6px;background:rgba(0,0,0,.35);margin-top:4px;overflow:hidden}
@@ -92,7 +94,7 @@ body.touch.ingame #touch{display:block}
 </div>
 <div id="warn" class="off">⚠️ PÁSSARO VAI CAIR! DESVIE! ⚠️</div>
 <div id="pwrhud" class="off">
-  <div class="pwr eq" data-k="star"><span class="ic">⭐</span><div class="pbarbg"><i id="starbar"></i></div><span class="kk">X</span></div>
+  <div class="pwr eq" data-k="star"><span class="ic">⭐</span><div class="pbarbg"><i id="starbar"></i></div><span class="kk">🖱️</span></div>
   <div class="pwr" data-k="wind" id="windwrap"><span class="ic">🌬️</span><div class="pbarbg"><i id="windbar"></i></div><span class="kk">C</span></div>
   <div id="fragc">✨ 0/6</div>
 </div>
@@ -132,13 +134,15 @@ body.touch.ingame #touch{display:block}
       <li>Elevadores: fique em cima da plataforma e ela leva você para uma camada nova lá no alto.</li>
       <li>Você tem 3 corações e perde um se cair no vazio, levar cocô de pássaro, banana de macaco ou encostar num macaco.</li>
       <li><b>🐦 Pássaros:</b> quando aparecer o aviso vermelho "VAI CAIR", corra para longe da marcação no chão antes dos 3 segundos acabarem!</li>
-      <li><b>🐒 Macacos:</b> andam de um lado pro outro e jogam banana em você. Clique com o <b>mouse</b> (ou toque no botão ⭐) para atirar estrelas, ou pule em cima deles para derrotá-los. Macacos fracos têm 15% de vida e os fortes 20%.</li>
-      <li>Derrote macacos para ganhar fragmentos ✨ e desbloquear o poder do vento (<b>C</b>). Use <b>Q</b> para trocar o poder em destaque.</li>
-      <li>Os poderes têm uma barrinha de energia: espere ela encher um pouco para usar de novo.</li>
+      <li><b>🐒 Macacos:</b> andam de um lado pro outro e jogam banana em você. Pule em cima deles para derrotá-los, ou use o poder da estrela. Macacos fracos têm 15% de vida e os fortes 20%.</li>
+      <li>Derrote inimigos para ganhar fragmentos ✨. Com 5 fragmentos você desbloqueia o <b>poder da estrela</b> (clique com o <b>mouse</b> ou toque no botão ⭐ para usar); com mais fragmentos desbloqueia o <b>poder do vento</b> (tecla <b>C</b>). Use <b>Q</b> para trocar o poder em destaque.</li>
+      <li>O poder da estrela dura alguns segundos e depois precisa recarregar — fique de olho na barrinha.</li>
       <li><b>❓ Blocos de interrogação:</b> pule por baixo deles para ganhar moedas-estrela 🌟.</li>
       <li><b>🧱 Degraus de tijolo:</b> servem para subir nas partes mais altas do caminho.</li>
-      <li><b>🪨 Pedras:</b> obstáculo no chão, pule por cima delas.</li>
-      <li><b>🪵 Madeira (só na Fase 1):</b> aperte <b>E</b> perto dela para pegar, e aperte <b>E</b> de novo para arremessar nos macacos (tira 5% da vida deles).</li>
+      <li><b>🟨 Plataformas de areia flutuantes:</b> suba nelas para pegar a moeda-estrela em cima.</li>
+      <li><b>🪨 Pedras</b> e <b>💧 lagos:</b> obstáculos no chão, pule por cima deles.</li>
+      <li><b>🌿 Arbustos com aranha:</b> encostar do lado tira meio coração, mas pular em cima dá uma moeda-estrela.</li>
+      <li><b>🪵 Gravetos (pelo menos 2 por fase):</b> aperte <b>E</b> perto para pegar, e aperte <b>E</b> de novo para arremessar nos inimigos (tira 5% da vida deles).</li>
     </ul>
     <button class="btn" id="bBack">Voltar</button>
   </div>
@@ -486,12 +490,58 @@ function genLevel(i){
       }
     }
   }
-  // Fase 1: um pedaço de madeira no chão para coletar (E) e arremessar (E de novo)
-  lv.logPickup=null;
-  if(i===0){
-    const px=36;let gy=0;
-    for(const s of lv.solids){if(s.k==='g'&&px>=s.x0&&px<=s.x1)gy=Math.max(gy,s.y1)}
-    lv.logPickup={x:px,y:gy+.4,taken:false,mesh:null};
+  // Gravetos: pelo menos 2 por fase, para coletar (E) e arremessar (E de novo)
+  lv.logPickups=[];
+  {
+    const lgr=mulberry(9200+i*83);
+    const count=2+(lgr()<.3?1:0);
+    const candidates=lv.solids.filter(s=>s.k==='g'&&(s.x1-s.x0)>6&&s.x0>20);
+    for(let c=0;c<count&&candidates.length;c++){
+      const s=candidates[Math.floor(lgr()*candidates.length)];
+      const px=s.x0+(s.x1-s.x0)*(.3+lgr()*.4);
+      lv.logPickups.push({x:px,y:s.y1+.4,taken:false,mesh:null});
+    }
+  }
+  // Plataformas flutuantes de areia e grama, com moeda-estrela em cima
+  lv.sandCoins=[];
+  {
+    const spr=mulberry(9600+i*47);
+    for(const s of lv.solids.slice()){
+      if(s.k==='g'&&(s.x1-s.x0)>12&&s.x0>20&&spr()<.2){
+        const sw=4+spr()*2,sx=s.x0+(s.x1-s.x0)*(.3+spr()*.4),sy=s.y1+4+spr()*3;
+        const sp={x0:sx-sw/2,x1:sx+sw/2,y0:sy-1,y1:sy,k:'sp'};
+        lv.solids.push(sp);
+        lv.sandCoins.push({x:sx,y:sy+.6,taken:false,mesh:null});
+      }
+    }
+  }
+  // Pequeno lago: um vão no chão que precisa ser pulado
+  lv.lakes=[];
+  {
+    const lkr=mulberry(9500+i*61);
+    let placed=0;
+    for(const s of lv.solids){
+      if(placed>=2)break;
+      if(s.k==='g'&&(s.x1-s.x0)>26&&s.x0>60){
+        const gapW=4.5+lkr()*2,gapStart=s.x0+(s.x1-s.x0)*.5-gapW/2,oldX1=s.x1;
+        s.x1=gapStart;
+        lv.solids.push({x0:gapStart+gapW,x1:oldX1,y0:s.y0,y1:s.y1,k:'g'});
+        lv.lakes.push({x0:gapStart,x1:gapStart+gapW,y:s.y1});
+        placed++;
+      }
+    }
+  }
+  // Arbustos com aranha: encosta de lado tira meio coração, pula em cima ganha moeda-estrela
+  lv.bushes=[];
+  {
+    const bur=mulberry(9800+i*29);
+    for(const s of lv.solids.slice()){
+      if(s.k==='g'&&(s.x1-s.x0)>7&&s.x0>16&&bur()<.14){
+        const bx=s.x0+(s.x1-s.x0)*(.3+bur()*.4),bw=1.4,bh=1.1;
+        const bb={x0:bx-bw/2,x1:bx+bw/2,y0:s.y1,y1:s.y1+bh,k:'u',hitCd:0,rewardCd:0};
+        lv.solids.push(bb);lv.bushes.push(bb);
+      }
+    }
   }
   lv.bk=new Map();
   for(const s of lv.solids){for(let b=Math.floor(s.x0/BS);b<=Math.floor(s.x1/BS);b++){let a=lv.bk.get(b);if(!a){a=[];lv.bk.set(b,a)}a.push(s)}}
@@ -563,6 +613,21 @@ function buildEnv(i){
     for(let k=0;k<4;k++)g.add(mesh(SPH,cm,(k-1.5)*3.2,Math.sin(k*1.7)*.9,0,3.2+rr()*1.4,2.2+rr(),2.4));
     g.userData={bx:j*36-250+rr()*20,off:8+rr()*26,f:.1};g.position.z=-40-rr()*40;envGroup.add(g);envGroup.clouds.push(g);
   }
+  // pássaros voando no céu (decorativos)
+  envGroup.flyBirds=[];
+  for(let j=0;j<6;j++){
+    const bm=makeBirdMesh();bm.scale.set(.6,.6,.6);
+    bm.userData={bx:j*70-300+rr()*50,y:14+rr()*10,f:.08,sp:10+rr()*6,ph:rr()*10};
+    envGroup.add(bm);envGroup.flyBirds.push(bm);
+  }
+  // folhas caindo das árvores
+  envGroup.leaves=[];
+  const leafMat=PM(gc.clone().offsetHSL(.02,0,-.05));
+  for(let j=0;j<18;j++){
+    const lf=mesh(BOX,leafMat,0,0,0,.18,.03,.12);
+    lf.userData={bx:j*30-260+rr()*30,y0:10+rr()*8,f:.15,sp:1.2+rr()*.8,ph:rr()*10};
+    envGroup.add(lf);envGroup.leaves.push(lf);
+  }
   // vento passando
   envGroup.winds=[];
   const windMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.22,fog:false});
@@ -593,6 +658,12 @@ function buildEnv(i){
     lvGroup.add(mesh(BOX,mats.post,cx,e.yt+5.5,-3.6,w,.25,.25));
     if(e.sudden)g.visible=false;
   }
+  // lagos: vão no chão que precisa ser pulado, com água visível
+  const waterMat=new THREE.MeshBasicMaterial({color:0x3aa0dd,transparent:true,opacity:.75});
+  for(const lk of LV.lakes){
+    const lw=lk.x1-lk.x0;
+    lvGroup.add(mesh(BOX,waterMat,(lk.x0+lk.x1)/2,lk.y-.35,0,lw,.1,7));
+  }
   // movers
   for(const m of LV.movers){
     const g=new THREE.Group();g.add(mesh(BOX,mats.plat,0,-.6,0,m.w,1.2,7),mesh(BOX,mats.platTop,0,-.15,0,m.w+.1,.3,7.1));
@@ -619,15 +690,28 @@ function makeSolidMesh(s){
     g.add(mesh(BOX,mats.grass,cx,s.y1-.2,0,w+.05,.5,dep+.1));
     const r=mulberry(Math.floor(s.x0*10)+7);
     if(w>10){
-      const n=Math.floor(w/11);
+      const n=Math.floor(w/13);
       g.userData.trees=[];
       for(let j=0;j<n;j++){
-        const tx=s.x0+(j+.3+r()*.5)*w/n,tz=-1.8-r()*1.8,th=2.2+r()*2,cr=1.1+r()*.9;
+        // árvore grande estilo pântano: tronco torto, copa achatada, musgo pendurado e raízes
+        const tx=s.x0+(j+.3+r()*.5)*w/n,tz=-1.8-r()*2,th=3.6+r()*3,cr=1.7+r()*1.3,lean=(r()-.5)*.32;
         const treeG=new THREE.Group();treeG.position.set(tx,s.y1,tz);
-        treeG.add(mesh(CYL,mats.trunk,0,th/2,0,.22,th,.22),mesh(SPH,r()<.5?mats.crown:mats.crown2,0,th+cr*.55,0,cr,cr*1.1,cr));
-        if(r()<.28){
+        const trunk=mesh(CYL,mats.trunk,0,th/2,0,.32+r()*.12,th,.24);trunk.rotation.z=lean;
+        const crown=mesh(SPH,r()<.5?mats.crown:mats.crown2,Math.sin(lean)*th*.32,th+cr*.5,0,cr*1.3,cr*.82,cr*1.3);
+        treeG.add(trunk,crown);
+        for(let mI=0;mI<3;mI++){ // musgo pendurado
+          const mossM=PM(0x6b7a3a,{transparent:true,opacity:.85});
+          const moss=mesh(CYL,mossM,(r()-.5)*cr*1.4,th+cr*.15-r()*.7,(r()-.5)*cr*1.2,.05,.9+r()*.8,.05);
+          treeG.add(moss);
+        }
+        for(let rI=0;rI<3;rI++){ // raízes na base
+          const ang=rI/3*TAU+r();
+          const root=mesh(CONE4,mats.trunk,Math.cos(ang)*.5,.15,Math.sin(ang)*.5,.14,.6,.14);
+          root.rotation.z=Math.PI*.42;root.rotation.y=-ang;treeG.add(root);
+        }
+        if(r()<.3){
           const macaw=makeMacawMesh(r()<.5?0x3355ee:0xdd3322);
-          macaw.position.set((r()-.5)*cr*1.2,th+cr*.7,(r()-.5)*cr*.6);
+          macaw.position.set((r()-.5)*cr*1.2,th+cr*.65,(r()-.5)*cr*.6);
           macaw.rotation.y=r()*TAU;treeG.add(macaw);
         }
         g.add(treeG);g.userData.trees.push({grp:treeG,ph:r()*10});
@@ -647,6 +731,22 @@ function makeSolidMesh(s){
   }else if(s.k==='r'){
     g.add(mesh(SPH,PM(0x8a8a88),cx,s.y0+h*.5,0,w*.55,h*.6,w*.5));
     g.add(mesh(SPH,PM(0x767674),cx-w*.2,s.y0+h*.3,w*.15,w*.35,h*.4,w*.3));
+  }else if(s.k==='sp'){
+    g.add(mesh(BOX,PM(0xe8c77e),cx,(s.y0+s.y1)/2,0,w,h,7));
+    g.add(mesh(BOX,mats.grass,cx,s.y1-.1,0,w+.05,.35,7.1));
+  }else if(s.k==='u'){
+    const bushM=PM(0x4a8a3a);
+    g.add(mesh(SPH,bushM,cx,s.y0+h*.5,0,w*.6,h*.55,w*.55));
+    g.add(mesh(SPH,bushM,cx-w*.2,s.y0+h*.35,w*.15,w*.4,h*.4,w*.35));
+    g.add(mesh(SPH,bushM,cx+w*.22,s.y0+h*.3,-w*.1,w*.38,h*.35,w*.32));
+    // aranha espiando
+    const spiderM=PM(0x1a1a1a);
+    const spider=mesh(SPH,spiderM,cx,s.y0+h*.6,w*.38,.13,.1,.1);
+    for(let li=0;li<3;li++){
+      const leg=mesh(CYL,spiderM,cx+(li-1)*.08,s.y0+h*.55,w*.42,.015,.16,.015);
+      leg.rotation.z=(li-1)*.5;g.add(leg);
+    }
+    g.add(spider,mesh(SPH,PM(0xff3030),cx-.04,s.y0+h*.62,w*.46,.025),mesh(SPH,PM(0xff3030),cx+.04,s.y0+h*.62,w*.46,.025));
   }else if(s.k==='b'){
     const tex=mats.brick.map.clone();tex.repeat.set(Math.max(1,w/2),Math.max(1,h/2));tex.needsUpdate=true;
     const bm=mats.brick.clone();bm.map=tex;
@@ -755,6 +855,16 @@ function updateEnv(cx,cy,t){
   for(const h of envGroup.hills){h.position.x=cx+wrap(h.userData.bx-cx*h.userData.f,130);h.position.y=cy-24}
   for(const c of envGroup.clouds){c.position.x=cx+wrap(c.userData.bx-cx*c.userData.f+t*.8,140);c.position.y=cy+c.userData.off}
   for(const w of envGroup.winds){w.position.x=cx+wrap(w.userData.bx-cx*w.userData.f+t*w.userData.sp,160);w.position.y=cy+w.userData.y}
+  for(const b of envGroup.flyBirds){
+    b.position.x=cx+wrap(b.userData.bx-cx*b.userData.f+t*b.userData.sp,180);
+    b.position.y=b.userData.y+Math.sin(t*2+b.userData.ph)*1.2;
+    b.rotation.z=Math.sin(t*10+b.userData.ph)*.2;
+  }
+  for(const lf of envGroup.leaves){
+    lf.position.x=cx+wrap(lf.userData.bx-cx*lf.userData.f+Math.sin(t+lf.userData.ph)*2,150);
+    lf.position.y=cy+wrap(lf.userData.y0-cy*lf.userData.f-t*lf.userData.sp,14)+4;
+    lf.rotation.z=t*2+lf.userData.ph;lf.rotation.x=t*1.4+lf.userData.ph;
+  }
   envGroup.sun.position.set(cx+50,cy+34,-180);
   if(envGroup.stars)envGroup.stars.position.set(cx*.97,cy*.97,0);
 }
@@ -814,14 +924,19 @@ function updateQBlocks(dt){
   }
 }
 const powers={
-  fragments:0,fragGoal:6,equipped:'star',
-  star:{unlocked:true,energy:1,max:1,regen:1/9,cost:.34,dmg:8},
+  fragments:0,fragGoal:5,windGoal:12,equipped:'star',
+  star:{unlocked:false,active:false,timeLeft:0,duration:5,cooldown:16,cd:0,fireCd:0,fireRate:.28,dmg:8},
   wind:{unlocked:false,energy:1,max:1,regen:1/7,cost:.5}
 };
 function useStarPower(){
   if(state!=='playing')return;
-  const p=powers.star;if(!p.unlocked||p.energy<p.cost)return;
-  p.energy-=p.cost;
+  const p=powers.star;if(!p.unlocked)return;
+  if(!p.active){
+    if(p.cd>0)return; // ainda recarregando
+    p.active=true;p.timeLeft=p.duration;p.fireCd=0;
+  }
+  if(p.fireCd>0)return;
+  p.fireCd=p.fireRate;
   const sm=makeStarMesh();fxGroup.add(sm);
   stars.push({x:P.x+P.dir*.8,y:P.y+1.1,vx:P.dir*20,life:1.1,hit:false,mesh:sm});
   SFX.starShot();
@@ -839,12 +954,19 @@ function useWindPower(){
 }
 function useLog(){
   if(state!=='playing')return;
-  const lp=LV.logPickup;
-  if(!P.hasLog&&lp&&!lp.taken&&Math.abs(P.x-lp.x)<1.6&&Math.abs(P.y-lp.y)<2){
-    lp.taken=true;P.hasLog=true;
-    if(lp.mesh){fxGroup.remove(lp.mesh);lp.mesh=null}
-    toast('🪵 Pegou o pedaço de madeira! Aperte E para arremessar');SFX.click();
-  }else if(P.hasLog){
+  if(!P.hasLog){
+    let best=null,bd=1.6;
+    for(const lp of LV.logPickups){
+      if(lp.taken)continue;
+      const d=Math.abs(P.x-lp.x);
+      if(d<bd&&Math.abs(P.y-lp.y)<2){best=lp;bd=d}
+    }
+    if(best){
+      best.taken=true;P.hasLog=true;
+      if(best.mesh){fxGroup.remove(best.mesh);best.mesh=null}
+      toast('🪵 Pegou o graveto! Aperte E para arremessar');SFX.click();
+    }
+  }else{
     P.hasLog=false;
     const lm=makeLogMesh();fxGroup.add(lm);
     logThrown.push({x:P.x+P.dir*.8,y:P.y+1.1,vx:P.dir*16,life:1.4,hit:false,mesh:lm});
@@ -856,24 +978,60 @@ function togglePower(){
   document.querySelectorAll('.pwr').forEach(e=>e.classList.toggle('eq',e.dataset.k===powers.equipped));
   SFX.click();
 }
+function updateFragHud(){
+  const nextGoal=!powers.star.unlocked?powers.fragGoal:powers.windGoal;
+  $('fragc').textContent='✨ '+powers.fragments+'/'+nextGoal;
+}
 function updatePowers(dt){
-  for(const k of['star','wind']){const p=powers[k];if(p.energy<p.max)p.energy=Math.min(p.max,p.energy+p.regen*dt)}
-  $('starbar').style.width=(powers.star.energy*100)+'%';
-  $('windwrap').style.opacity=powers.wind.unlocked?1:.35;
-  $('windbar').style.width=(powers.wind.energy*100)+'%';
+  const p=powers.star;
+  if(p.active){
+    p.timeLeft-=dt;if(p.fireCd>0)p.fireCd-=dt;
+    if(p.timeLeft<=0){p.active=false;p.cd=p.cooldown}
+  }else if(p.cd>0)p.cd-=dt;
+  const w=powers.wind;if(w.energy<w.max)w.energy=Math.min(w.max,w.energy+w.regen*dt);
+  const starPct=p.active?(p.timeLeft/p.duration)*100:(p.unlocked?100-(p.cd/p.cooldown)*100:0);
+  $('starbar').style.width=starPct+'%';
+  $('starbar').style.background=p.active?'linear-gradient(90deg,#ffe066,#ff9f1c)':'linear-gradient(90deg,#8a6a2a,#5c4a1a)';
+  $('windwrap').style.opacity=w.unlocked?1:.35;
+  $('windbar').style.width=(w.energy*100)+'%';
 }
 function spawnFragment(x,y){
   powers.fragments++;SFX.frag();
-  toast('✨ Fragmento coletado! ('+powers.fragments+'/'+powers.fragGoal+')');
-  $('fragc').textContent='✨ '+powers.fragments+'/'+powers.fragGoal;
-  if(!powers.wind.unlocked&&powers.fragments>=powers.fragGoal){powers.wind.unlocked=true;toast('🌬️ Poder do Vento desbloqueado! Tecla C');}
+  toast('✨ Fragmento coletado! ('+powers.fragments+')');
+  updateFragHud();
+  if(!powers.star.unlocked&&powers.fragments>=powers.fragGoal){powers.star.unlocked=true;toast('⭐ Poder da Estrela desbloqueado! Clique com o mouse para usar');updateFragHud()}
+  if(!powers.wind.unlocked&&powers.fragments>=powers.windGoal){powers.wind.unlocked=true;toast('🌬️ Poder do Vento desbloqueado! Tecla C');updateFragHud()}
 }
-function hitPlayer(){
+function damagePlayer(amount){
   if(state!=='playing'||P.inv>0)return;
-  lives--;SFX.hurt();setHearts();P.inv=1.3;
+  lives=Math.max(0,lives-amount);SFX.hurt();setHearts();P.inv=amount>=2?1.3:1.1;
   if(lives<=0){
     state='over';toast('Acabaram os corações! Recomeçando a fase…');
-    setTimeout(()=>{if(state!=='over')return;lives=3;loadLevel(lvIdx);state='playing'},2300);
+    setTimeout(()=>{if(state!=='over')return;lives=6;loadLevel(lvIdx);state='playing'},2300);
+  }
+}
+function hitPlayer(){damagePlayer(2)}
+function updateBushes(dt){
+  for(const u of LV.bushes){
+    if(u.hitCd>0)u.hitCd-=dt;
+    if(u.rewardCd>0)u.rewardCd-=dt;
+    const ux=(u.x0+u.x1)/2,dx=Math.abs(ux-P.x);
+    if(dx<1.3){
+      if(P.vy<-2&&P.y>u.y1+.6){
+        if(u.rewardCd<=0){u.rewardCd=3;spawnCoinPop(ux,u.y1+.9)}
+      }else if(P.inv<=0&&dx<1.05&&u.hitCd<=0){
+        u.hitCd=1.1;damagePlayer(1);
+      }
+    }
+  }
+}
+function updateSandCoins(){
+  for(const sc of LV.sandCoins){
+    if(sc.taken)continue;
+    if(Math.abs(P.x-sc.x)<1&&Math.abs(P.y-sc.y)<1.2){
+      sc.taken=true;spawnCoinPop(sc.x,sc.y);
+      if(sc.mesh){fxGroup.remove(sc.mesh);sc.mesh=null}
+    }
   }
 }
 let logThrown=[];
@@ -1071,7 +1229,7 @@ function zoneBase(x){for(const z of LV.zones)if(x>=z.x0&&x<=z.x1)return z.base;r
 function step(dt){
   gt+=dt;
   updateMovers();updateElevs(dt);
-  if(state==='playing'){updateMonkeys(dt);updateBananas(dt);updateStars(dt);updateBirds(dt);updatePowers(dt);updateQBlocks(dt);updateCoinsFX(dt);updateLogThrown(dt)}
+  if(state==='playing'){updateMonkeys(dt);updateBananas(dt);updateStars(dt);updateBirds(dt);updatePowers(dt);updateQBlocks(dt);updateCoinsFX(dt);updateLogThrown(dt);updateBushes(dt);updateSandCoins()}
   const I=readInput();
   if(state==='enter'){enterT+=dt;if(enterT>1.15)beginTunnel()}
   if(P.inv>0)P.inv-=dt;
@@ -1129,10 +1287,10 @@ function step(dt){
   if(state==='playing'&&P.ground&&Math.abs(P.x-LV.portal.x)<1.4&&Math.abs(P.y-LV.portal.y)<1)beginEnter();
 }
 function loseLife(){
-  lives--;SFX.fall();setHearts();
+  lives=Math.max(0,lives-2);SFX.fall();setHearts();
   if(lives<=0){
     state='over';toast('Acabaram os corações! Recomeçando a fase…');
-    setTimeout(()=>{if(state!=='over')return;lives=3;loadLevel(lvIdx);state='playing'},2300);
+    setTimeout(()=>{if(state!=='over')return;lives=6;loadLevel(lvIdx);state='playing'},2300);
   }else{
     P.x=P.safe.x;P.y=P.safe.y+.02;P.vx=P.vy=0;P.inv=1.4;P.ground=false;P.gobj=null;P.crouch=false;
     if(blockedStand())P.crouch=true;
@@ -1147,7 +1305,8 @@ function loadLevel(i){
   P={x:6,y:.02,vx:0,vy:0,dir:1,ground:false,gobj:null,crouch:false,h:H_ST,coy:0,maxX:6,safe:{x:6,y:.02},inv:0,hasLog:false};
   gt=0;enterT=0;camFace=1;camX=6+5.5;camY=3;
   gameScene.add(pc.root);pc.root.visible=true;pc.root.scale.set(1,1,1);
-  if(LV.logPickup&&!LV.logPickup.taken){LV.logPickup.mesh=makeLogMesh();LV.logPickup.mesh.position.set(LV.logPickup.x,LV.logPickup.y,0);fxGroup.add(LV.logPickup.mesh)}
+  for(const lp of LV.logPickups){if(!lp.taken){lp.mesh=makeLogMesh();lp.mesh.position.set(lp.x,lp.y,0);fxGroup.add(lp.mesh)}}
+  for(const sc of LV.sandCoins){if(!sc.taken){sc.mesh=makeCoinMesh();sc.mesh.position.set(sc.x,sc.y,0);fxGroup.add(sc.mesh)}}
   streamLevel(P.x);setHearts();
   $('lvname').textContent='Fase '+(i+1)+' · '+LV.L.n;$('bar').style.width='0%';
   toast('Fase '+(i+1)+' — '+LV.L.n);musicStart(i);
@@ -1218,7 +1377,14 @@ let fadeCur=0,fadeGoal=0,fadeSp=1;
 function setFade(v){fadeCur=fadeGoal=v;$('fade').style.opacity=v}
 function fadeTo(v,sp){fadeGoal=v;fadeSp=sp}
 function toast(t){const e=$('toast');e.textContent=t;e.classList.remove('show');void e.offsetWidth;e.classList.add('show')}
-function setHearts(){let s='';for(let i=0;i<3;i++)s+='<span class="h'+(i<lives?' on':'')+'">♥</span>';$('hearts').innerHTML=s}
+function setHearts(){
+  let s='';
+  for(let i=0;i<3;i++){
+    const rem=clamp(lives-i*2,0,2),pct=rem/2*100;
+    s+='<span class="hwrap"><span class="hbg">♥</span><span class="hfg" style="width:'+pct+'%">♥</span></span>';
+  }
+  $('hearts').innerHTML=s;
+}
 function markSel(){document.querySelectorAll('.card').forEach((c,i)=>c.classList.toggle('sel',i===selIdx))}
 document.querySelectorAll('.card').forEach((c,i)=>{
   c.addEventListener('mouseenter',()=>{selIdx=i;markSel()});
@@ -1253,9 +1419,11 @@ function renderTitle(dt,t){
 }
 function pick(i){auInit();SFX.click();startGame(kinds[i])}
 function startGame(kind){
-  pc=makeChar(kind);lives=3;coins=0;$('coinc').textContent='🪙 0';
-  powers.fragments=0;powers.equipped='star';powers.star.unlocked=true;powers.star.energy=1;powers.wind.unlocked=false;powers.wind.energy=1;
-  $('fragc').textContent='✨ 0/'+powers.fragGoal;
+  pc=makeChar(kind);lives=6;coins=0;$('coinc').textContent='🪙 0';
+  powers.fragments=0;powers.equipped='star';
+  powers.star.unlocked=false;powers.star.active=false;powers.star.timeLeft=0;powers.star.cd=0;
+  powers.wind.unlocked=false;powers.wind.energy=1;
+  updateFragHud();
   document.querySelectorAll('.pwr').forEach(e=>e.classList.toggle('eq',e.dataset.k==='star'));
   $('title').classList.add('off');$('hud').classList.remove('off');$('pwrhud').classList.remove('off');document.body.classList.add('ingame');
   loadLevel(START_LEVEL-1);state='playing';setFade(1);fadeTo(0,2.5);
