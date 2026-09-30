@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Jogo do Castelo</title>
+<style>
+:root{--ink:#fff3d4;--btn:#ffcf4d;--btn-ink:#3a2412}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{height:100%;margin:0;overflow:hidden;background:#100a08;font-family:"Trebuchet MS",system-ui,sans-serif;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{position:fixed;left:0;right:0;top:0;padding:14px;display:flex;justify-content:space-between;color:#fff;font-weight:800;font-size:clamp(16px,3vw,24px);text-shadow:0 2px 4px rgba(0,0,0,.6);pointer-events:none;z-index:5}
+#msg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);color:#fff;font-weight:800;font-size:clamp(20px,5vw,40px);text-align:center;text-shadow:0 3px 8px rgba(0,0,0,.7);z-index:10}
+#msg.off{display:none}
+#msg span{display:block;font-size:.5em;font-weight:700;margin-top:10px}
+#touch{display:none;position:fixed;inset:0;pointer-events:none;z-index:6}
+body.touch #touch{display:block}
+.pad{position:absolute;left:14px;bottom:14px;display:grid;grid-template-columns:70px 70px;grid-template-rows:70px;gap:8px}
+.pad button,#jbtn{pointer-events:auto;border:3px solid rgba(255,255,255,.7);background:rgba(120,30,30,.55);color:#fff3d4;font-weight:800;font-size:28px;border-radius:18px;touch-action:none}
+.pad button:active,#jbtn:active{background:rgba(160,40,40,.9)}
+#jbtn{position:fixed;right:18px;bottom:24px;width:100px;height:100px;border-radius:50%;font-size:18px;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="lv">Fase 1 · Castelo</div>
+  <div id="lives">❤️❤️❤️</div>
+</div>
+<div id="msg" class="off"><div id="msgTxt"></div><span id="msgSub"></span></div>
+<div id="touch">
+  <div class="pad">
+    <button id="bl">←</button>
+    <button id="br">→</button>
+  </div>
+  <button id="jbtn">PULAR</button>
+</div>
+
+<script>
+(function(){
+'use strict';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let W=0,H=0;
+function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight}
+addEventListener('resize',resize);resize();
+if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
+
+/* ===== mundo da fase 1: dentro do castelo ===== */
+const GRAV=1500,JUMP=-620,SPEED=270,GROUND_Y=620;
+const LEVEL_END=3300;
+// plataformas de pedra (degraus simples do salão)
+const platforms=[
+  {x:0,y:GROUND_Y,w:LEVEL_END+400,h:200}, // chão contínuo do salão
+  {x:900,y:GROUND_Y-90,w:170,h:26},
+  {x:1550,y:GROUND_Y-90,w:170,h:26},
+  {x:2250,y:GROUND_Y-90,w:170,h:26},
+];
+// bandeiras vermelhas com fênix dourada, penduradas nas paredes
+const banners=[260,760,1260,1760,2260,2760,3160].map(x=>({x}));
+// quadros de reis nas paredes
+const portraits=[500,1020,1520,2020,2520,3020].map(x=>({x}));
+// mesas com cadeiras ao fundo (decoração, não colide)
+const tableSets=[150,1150,1900,2650].map(x=>({x}));
+// manchas de sangue no chão
+const bloodSpots=[380,700,1080,1480,1900,2220,2600,2980].map(x=>({x,r:22+((x*7)%20)}));
+// zumbis: {x,y,patrolMin,patrolMax,spd,dir,alive,hp}
+const zombiesData=[
+  {x:480,pMin:420,pMax:640},
+  {x:1000,pMin:920,pMax:1160},
+  {x:1420,pMin:1360,pMax:1560},
+  {x:1900,pMin:1820,pMax:2050},
+  {x:2400,pMin:2320,pMax:2560},
+  {x:2820,pMin:2750,pMax:3000},
+];
+let zombies=[];
+function resetZombies(){
+  zombies=zombiesData.map(z=>({x:z.x,y:GROUND_Y,w:34,h:52,pMin:z.pMin,pMax:z.pMax,spd:.7+Math.random()*.6,dir:Math.random()<.5?1:-1,alive:true,hitT:0}));
+}
+const goal={x:LEVEL_END,y:GROUND_Y-150,w:70,h:150};
+
+/* ===== estado ===== */
+let state='title',lives=3,camX=0,t=0,keys={},touchL=0,touchR=0,jumpBuf=0;
+let P={x:60,y:GROUND_Y-70,vx:0,vy:0,w:32,h:50,onGround:false,coy:0,inv:0,dir:1};
+function resetPlayer(){P.x=60;P.y=GROUND_Y-70;P.vx=0;P.vy=0;P.onGround=false;P.coy=0;P.inv=1;camX=0}
+function setLives(){$('lives').textContent='❤️'.repeat(Math.max(0,lives))+'🖤'.repeat(Math.max(0,3-lives))}
+
+function showMsg(txt,sub){$('msgTxt').textContent=txt;$('msgSub').textContent=sub||'';$('msg').classList.remove('off')}
+function hideMsg(){$('msg').classList.add('off')}
+
+function start(){
+  lives=3;setLives();resetPlayer();resetZombies();state='playing';hideMsg();
+}
+showMsg('🏰 Jogo do Castelo','Toque ou aperte ESPAÇO para começar — cuidado com os zumbis!');
+addEventListener('keydown',e=>{
+  if((state==='title'||state==='over'||state==='win')&&(e.code==='Space'||e.code==='Enter')){start();return}
+  keys[e.code]=true;
+  if(!e.repeat&&(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'))jumpBuf=.12;
+});
+addEventListener('keyup',e=>{keys[e.code]=false});
+cv.addEventListener('pointerdown',()=>{
+  if(state==='title'||state==='over'||state==='win')start();
+});
+$('bl').addEventListener('pointerdown',e=>{e.preventDefault();touchL=1});
+$('br').addEventListener('pointerdown',e=>{e.preventDefault();touchR=1});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>{
+  $('bl').addEventListener(ev,()=>touchL=0);
+  $('br').addEventListener(ev,()=>touchR=0);
+});
+$('jbtn').addEventListener('pointerdown',e=>{e.preventDefault();jumpBuf=.12});
+
+function rectsOverlap(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+
+function update(dt){
+  t+=dt;
+  if(state!=='playing')return;
+  if(jumpBuf>0)jumpBuf-=dt;
+  if(P.inv>0)P.inv-=dt;
+  const left=keys.ArrowLeft||keys.KeyA||touchL,right=keys.ArrowRight||keys.KeyD||touchR;
+  const ax=(right?1:0)-(left?1:0);
+  if(ax)P.dir=ax;
+  const want=ax*SPEED;
+  const acc=P.onGround?2600:1400;
+  if(P.vx<want)P.vx=Math.min(want,P.vx+acc*dt);else if(P.vx>want)P.vx=Math.max(want,P.vx-acc*dt);
+  P.x+=P.vx*dt;
+  P.x=Math.max(P.x,10);
+  if(P.onGround)P.coy=.1;else P.coy-=dt;
+  if(jumpBuf>0&&P.coy>0){P.vy=JUMP;P.onGround=false;P.coy=0;jumpBuf=0}
+  P.vy+=GRAV*dt;
+  const oy=P.y;
+  P.y+=P.vy*dt;
+  P.onGround=false;
+  for(const pf of platforms){
+    if(P.x+P.w>pf.x&&P.x<pf.x+pf.w){
+      if(P.vy>=0&&oy+P.h<=pf.y+10&&P.y+P.h>=pf.y){
+        P.y=pf.y-P.h;P.vy=0;P.onGround=true;
+      }
+    }
+  }
+  // zumbis: patrulham e atacam
+  for(const z of zombies){
+    if(!z.alive)continue;
+    if(z.hitT>0)z.hitT-=dt;
+    z.x+=z.dir*40*z.spd*dt;
+    if(z.x<=z.pMin){z.x=z.pMin;z.dir=1}else if(z.x>=z.pMax){z.x=z.pMax;z.dir=-1}
+    const zb={x:z.x-z.w/2,y:z.y-z.h,w:z.w,h:z.h};
+    const pb={x:P.x,y:P.y,w:P.w,h:P.h};
+    if(rectsOverlap(pb,zb)){
+      if(P.vy>0&&P.y+P.h-8<zb.y+14){
+        z.alive=false;P.vy=JUMP*.6;P.inv=.3;
+      }else if(P.inv<=0){
+        lives--;setLives();P.inv=1.2;P.vy=-380;P.vx=-P.dir*160;
+        if(lives<=0){state='over';showMsg('🧟 Você foi pego pelos zumbis','Toque ou aperte ESPAÇO para tentar de novo')}
+      }
+    }
+  }
+  // caiu no vazio
+  if(P.y>H+250){
+    lives--;setLives();
+    if(lives<=0){state='over';showMsg('🧟 Você foi pego pelos zumbis','Toque ou aperte ESPAÇO para tentar de novo')}
+    else{resetPlayer();P.inv=1.2}
+  }
+  // chegou na meta
+  const pb={x:P.x,y:P.y,w:P.w,h:P.h};
+  if(rectsOverlap(pb,goal)){
+    state='win';showMsg('👑 Fase 1 completa!','Toque ou aperte ESPAÇO para jogar de novo');
+  }
+  const targetCam=Math.max(0,Math.min(LEVEL_END-W+90,P.x-W*.4));
+  camX+=(targetCam-camX)*Math.min(1,dt*4);
+}
+
+/* ===== desenho ===== */
+function drawBackground(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#1a130f');g.addColorStop(1,'#33241a');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // parede de pedra
+  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;
+  const bw=86,bh=58;
+  for(let row=0;row*bh<H*.65+bh;row++){
+    const off=row%2?bw/2:0;
+    for(let x=-bw+((camX*.3)%bw)*-1+off;x<W+bw;x+=bw)ctx.strokeRect(x,row*bh,bw,bh);
+  }
+}
+function drawWindowSlit(x){
+  const bx=x-camX;if(bx<-40||bx>W+40)return;
+  const y=H*.14;
+  ctx.fillStyle='#3a3026';ctx.fillRect(bx-24,y,48,120);
+  const g=ctx.createLinearGradient(0,y,0,y+110);
+  g.addColorStop(0,'#3a4a6a');g.addColorStop(1,'#1a2438');
+  ctx.fillStyle=g;ctx.fillRect(bx-18,y+6,36,100);
+}
+function drawBanner(x){
+  const bx=x-camX;if(bx<-60||bx>W+60)return;
+  const top=H*.1,w=54,h=150;
+  ctx.fillStyle='#3a2a1a';ctx.fillRect(bx-w/2-6,top-6,w+12,10);
+  ctx.fillStyle='#8a1414';
+  ctx.beginPath();
+  ctx.moveTo(bx-w/2,top);ctx.lineTo(bx+w/2,top);ctx.lineTo(bx+w/2,top+h-18);
+  ctx.lineTo(bx,top+h);ctx.lineTo(bx-w/2,top+h-18);ctx.closePath();ctx.fill();
+  // fênix dourada estilizada (corpo + asas abertas)
+  ctx.fillStyle='#e8b93a';
+  ctx.save();ctx.translate(bx,top+h*.42);
+  ctx.beginPath();ctx.ellipse(0,0,7,11,0,0,Math.PI*2);ctx.fill(); // corpo
+  ctx.beginPath();ctx.moveTo(0,-4);ctx.lineTo(-20,-14);ctx.lineTo(-16,2);ctx.lineTo(-2,4);ctx.closePath();ctx.fill(); // asa esq
+  ctx.beginPath();ctx.moveTo(0,-4);ctx.lineTo(20,-14);ctx.lineTo(16,2);ctx.lineTo(2,4);ctx.closePath();ctx.fill(); // asa dir
+  ctx.beginPath();ctx.moveTo(0,10);ctx.lineTo(-5,22);ctx.lineTo(0,18);ctx.lineTo(5,22);ctx.closePath();ctx.fill(); // cauda
+  ctx.beginPath();ctx.arc(0,-10,3.4,0,Math.PI*2);ctx.fill(); // cabeça
+  ctx.restore();
+}
+function drawPortrait(x){
+  const bx=x-camX;if(bx<-50||bx>W+50)return;
+  const top=H*.16,w=70,h=90;
+  ctx.fillStyle='#8a6a2a';ctx.fillRect(bx-w/2-6,top-6,w+12,h+12);
+  ctx.fillStyle='#2a1810';ctx.fillRect(bx-w/2,top,w,h);
+  // rei estilizado: coroa + rosto + manto
+  ctx.fillStyle='#caa24a';
+  ctx.fillRect(bx-14,top+10,28,10); // coroa base
+  ctx.beginPath();ctx.moveTo(bx-14,top+10);ctx.lineTo(bx-14,top+2);ctx.lineTo(bx-7,top+10);ctx.lineTo(bx,top);ctx.lineTo(bx+7,top+10);ctx.lineTo(bx+14,top+2);ctx.lineTo(bx+14,top+10);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#d9b98a';ctx.beginPath();ctx.ellipse(bx,top+32,13,15,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#5a1a1a';ctx.beginPath();ctx.moveTo(bx-20,top+h-4);ctx.lineTo(bx+20,top+h-4);ctx.lineTo(bx+16,top+48);ctx.lineTo(bx-16,top+48);ctx.closePath();ctx.fill();
+}
+function drawTableSet(x){
+  const bx=x-camX;if(bx<-150||bx>W+150)return;
+  const y=GROUND_Y;
+  ctx.fillStyle='#3a2a1a';
+  ctx.fillRect(bx-70,y-46,16,46);ctx.fillRect(bx-70,y-66,16,26);
+  ctx.fillRect(bx+54,y-46,16,46);ctx.fillRect(bx+54,y-66,16,26);
+  ctx.fillStyle='#5a4230';ctx.fillRect(bx-56,y-58,110,14);
+  ctx.fillStyle='#4a3626';ctx.fillRect(bx-44,y-44,10,44);ctx.fillRect(bx+34,y-44,10,44);
+  ctx.fillStyle='#8a8a92';ctx.beginPath();ctx.arc(bx-10,y-68,8,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#caa24a';ctx.fillRect(bx+10,y-72,14,14);
+}
+function drawBlood(bx,r){
+  const x=bx-camX;if(x<-60||x>W+60)return;
+  ctx.fillStyle='rgba(90,10,10,.55)';
+  ctx.beginPath();ctx.ellipse(x,GROUND_Y-4,r,r*.35,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(x+r*.6,GROUND_Y-2,r*.4,r*.16,0,0,Math.PI*2);ctx.fill();
+}
+function drawPlatform(pf){
+  ctx.fillStyle='#4a3d33';
+  ctx.fillRect(pf.x-camX,pf.y,pf.w,pf.h);
+  ctx.fillStyle='#6b5a4a';
+  ctx.fillRect(pf.x-camX,pf.y,pf.w,6);
+  if(pf.h<60){
+    ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=2;
+    for(let bx=0;bx<pf.w;bx+=40)ctx.strokeRect(pf.x-camX+bx,pf.y,Math.min(40,pf.w-bx),pf.h);
+  }
+  // tapete vermelho por cima do chão principal
+  if(pf.h>100){
+    ctx.fillStyle='#7a1414';
+    ctx.fillRect(pf.x-camX,pf.y,pf.w,10);
+    ctx.strokeStyle='#ffcf4d';ctx.lineWidth=2;
+    ctx.strokeRect(pf.x-camX,pf.y+1,pf.w,8);
+  }
+}
+function drawZombie(z){
+  if(!z.alive)return;
+  const x=z.x-camX,y=z.y;
+  const jolt=z.hitT>0?Math.sin(z.hitT*40)*.1:0;
+  ctx.save();ctx.translate(x,y);ctx.rotate(jolt);
+  ctx.fillStyle='#5a6a4a';
+  ctx.fillRect(-14,-40,28,34); // corpo
+  ctx.fillStyle='#7a8a5a';
+  ctx.beginPath();ctx.arc(0,-48,11,0,Math.PI*2);ctx.fill(); // cabeça
+  ctx.fillStyle='#1a1410';
+  ctx.fillRect(-7,-51,4,4);ctx.fillRect(3,-51,4,4); // olhos
+  ctx.fillStyle='#5a6a4a';
+  ctx.fillRect(-20,-36,8,22);ctx.fillRect(12,-36,8,22); // braços caídos
+  ctx.fillStyle='#3a3a2a';
+  ctx.fillRect(-12,-6,10,8);ctx.fillRect(2,-6,10,8); // pernas
+  ctx.restore();
+}
+function drawGoal(){
+  const x=goal.x-camX;
+  ctx.fillStyle='#3a2a1a';ctx.fillRect(x-8,goal.y-10,goal.w+16,goal.h+20);
+  ctx.fillStyle='#caa24a';
+  ctx.beginPath();ctx.moveTo(x+goal.w/2-14,goal.y+10);ctx.lineTo(x+goal.w/2-14,goal.y+2);ctx.lineTo(x+goal.w/2-7,goal.y+10);ctx.lineTo(x+goal.w/2,goal.y);ctx.lineTo(x+goal.w/2+7,goal.y+10);ctx.lineTo(x+goal.w/2+14,goal.y+2);ctx.lineTo(x+goal.w/2+14,goal.y+10);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#8a1414';ctx.fillRect(x+8,goal.y+16,goal.w-16,goal.h-16);
+  ctx.strokeStyle='#caa24a';ctx.lineWidth=3;ctx.strokeRect(x+8,goal.y+16,goal.w-16,goal.h-16);
+}
+function drawPlayer(){
+  if(P.inv>0&&Math.floor(t*14)%2===0)return;
+  const x=P.x-camX,y=P.y;
+  ctx.fillStyle='#8a6a45';
+  ctx.fillRect(x,y,P.w,P.h);
+  ctx.fillStyle='#3a2412';
+  const eyeX=P.dir>0?x+P.w-11:x+5;
+  ctx.fillRect(eyeX,y+10,6,6);
+}
+function draw(){
+  drawBackground();
+  for(const w of [220,720,1220,1720,2220,2720,3220])drawWindowSlit(w);
+  for(const p of portraits)drawPortrait(p.x);
+  for(const b of banners)drawBanner(b.x);
+  for(const pf of platforms)drawPlatform(pf);
+  for(const ts of tableSets)drawTableSet(ts.x);
+  for(const b of bloodSpots)drawBlood(b.x,b.r);
+  for(const z of zombies)drawZombie(z);
+  drawGoal();
+  drawPlayer();
+}
+
+let last=performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.033,(now-last)/1000);last=now;
+  update(dt);draw();
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
