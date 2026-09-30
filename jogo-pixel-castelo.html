@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Castelo Pixel Art</title>
+<style>
+:root{--ink:#fff3d4;--btn:#ffcf4d;--btn-ink:#3a2412}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{height:100%;margin:0;overflow:hidden;background:#0a0708;font-family:"Trebuchet MS",system-ui,sans-serif;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated}
+#hud{position:fixed;left:0;right:0;top:0;padding:14px;display:flex;justify-content:space-between;color:#fff;font-weight:800;font-size:clamp(16px,3vw,24px);text-shadow:0 2px 4px rgba(0,0,0,.6);pointer-events:none;z-index:5}
+#msg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);color:#fff;font-weight:800;font-size:clamp(20px,5vw,40px);text-align:center;text-shadow:0 3px 8px rgba(0,0,0,.7);z-index:10}
+#msg.off{display:none}
+#msg span{display:block;font-size:.5em;font-weight:700;margin-top:10px}
+#touch{display:none;position:fixed;inset:0;pointer-events:none;z-index:6}
+body.touch #touch{display:block}
+.pad{position:absolute;left:14px;bottom:14px;display:grid;grid-template-columns:70px 70px;grid-template-rows:70px;gap:8px}
+.pad button,#jbtn{pointer-events:auto;border:3px solid rgba(255,255,255,.7);background:rgba(30,20,60,.55);color:#fff3d4;font-weight:800;font-size:28px;border-radius:18px;touch-action:none}
+.pad button:active,#jbtn:active{background:rgba(60,40,110,.9)}
+#jbtn{position:fixed;right:18px;bottom:24px;width:100px;height:100px;border-radius:50%;font-size:18px;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="lv">Fase 1 · Castelo Pixel Art</div>
+  <div id="lives">❤️❤️❤️</div>
+</div>
+<div id="msg" class="off"><div id="msgTxt"></div><span id="msgSub"></span></div>
+<div id="touch">
+  <div class="pad">
+    <button id="bl">←</button>
+    <button id="br">→</button>
+  </div>
+  <button id="jbtn">PULAR</button>
+</div>
+
+<script>
+(function(){
+'use strict';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let W=0,H=0;
+// canvas pequeno (baixa resolução) ampliado sem suavização = visual pixel art de verdade
+const PIX=3;
+const off=document.createElement('canvas'),octx=off.getContext('2d');
+let OW=0,OH=0;
+function resize(){
+  W=cv.width=innerWidth;H=cv.height=innerHeight;
+  OW=off.width=Math.ceil(W/PIX);OH=off.height=Math.ceil(H/PIX);
+  ctx.imageSmoothingEnabled=false;octx.imageSmoothingEnabled=false;
+}
+addEventListener('resize',resize);resize();
+if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
+
+/* ===== mundo da fase 1: castelo em pixel art ===== */
+const GRAV=1500,JUMP=-620,SPEED=270,GROUND_Y=620;
+const LEVEL_END=3000;
+const platforms=[
+  {x:0,y:GROUND_Y,w:LEVEL_END+400,h:200,ground:true},
+  {x:520,y:GROUND_Y-110,w:130,h:24,chain:true},
+  {x:900,y:GROUND_Y-180,w:130,h:24,chain:true},
+  {x:1280,y:GROUND_Y-110,w:130,h:24,chain:true},
+  {x:1700,y:GROUND_Y-140,w:150,h:24,chain:true},
+  {x:2150,y:GROUND_Y-90,w:130,h:24,chain:true},
+  {x:2500,y:GROUND_Y-170,w:130,h:24,chain:true},
+];
+const columns=[100,460,900,1350,1780,2200,2600,2950];
+const windowXs=[280,750,1230,1900,2380,2820];
+const portraits=[560,1100,1550,2050,2500];
+const goal={x:LEVEL_END,y:GROUND_Y-150,w:70,h:150};
+
+/* ===== estado ===== */
+let state='title',lives=3,camX=0,t=0,keys={},touchL=0,touchR=0,jumpBuf=0;
+let P={x:60,y:GROUND_Y-70,vx:0,vy:0,w:28,h:48,onGround:false,coy:0,inv:0,dir:1};
+function resetPlayer(){P.x=60;P.y=GROUND_Y-70;P.vx=0;P.vy=0;P.onGround=false;P.coy=0;P.inv=1;camX=0}
+function setLives(){$('lives').textContent='❤️'.repeat(Math.max(0,lives))+'🖤'.repeat(Math.max(0,3-lives))}
+function showMsg(txt,sub){$('msgTxt').textContent=txt;$('msgSub').textContent=sub||'';$('msg').classList.remove('off')}
+function hideMsg(){$('msg').classList.add('off')}
+function start(){lives=3;setLives();resetPlayer();state='playing';hideMsg()}
+showMsg('🏰 Castelo Pixel Art','Toque ou aperte ESPAÇO para começar!');
+addEventListener('keydown',e=>{
+  if((state==='title'||state==='over'||state==='win')&&(e.code==='Space'||e.code==='Enter')){start();return}
+  keys[e.code]=true;
+  if(!e.repeat&&(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'))jumpBuf=.12;
+});
+addEventListener('keyup',e=>{keys[e.code]=false});
+cv.addEventListener('pointerdown',()=>{if(state==='title'||state==='over'||state==='win')start()});
+$('bl').addEventListener('pointerdown',e=>{e.preventDefault();touchL=1});
+$('br').addEventListener('pointerdown',e=>{e.preventDefault();touchR=1});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>{
+  $('bl').addEventListener(ev,()=>touchL=0);
+  $('br').addEventListener(ev,()=>touchR=0);
+});
+$('jbtn').addEventListener('pointerdown',e=>{e.preventDefault();jumpBuf=.12});
+
+function rectsOverlap(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+
+function update(dt){
+  t+=dt;
+  if(state!=='playing')return;
+  if(jumpBuf>0)jumpBuf-=dt;
+  if(P.inv>0)P.inv-=dt;
+  const left=keys.ArrowLeft||keys.KeyA||touchL,right=keys.ArrowRight||keys.KeyD||touchR;
+  const ax=(right?1:0)-(left?1:0);
+  if(ax)P.dir=ax;
+  const want=ax*SPEED;
+  const acc=P.onGround?2600:1400;
+  if(P.vx<want)P.vx=Math.min(want,P.vx+acc*dt);else if(P.vx>want)P.vx=Math.max(want,P.vx-acc*dt);
+  P.x+=P.vx*dt;
+  P.x=Math.max(P.x,10);
+  if(P.onGround)P.coy=.1;else P.coy-=dt;
+  if(jumpBuf>0&&P.coy>0){P.vy=JUMP;P.onGround=false;P.coy=0;jumpBuf=0}
+  P.vy+=GRAV*dt;
+  const oy=P.y;
+  P.y+=P.vy*dt;
+  P.onGround=false;
+  for(const pf of platforms){
+    if(P.x+P.w>pf.x&&P.x<pf.x+pf.w){
+      if(P.vy>=0&&oy+P.h<=pf.y+10&&P.y+P.h>=pf.y){
+        P.y=pf.y-P.h;P.vy=0;P.onGround=true;
+      }
+    }
+  }
+  if(P.y>H*PIX+3000){
+    lives--;setLives();
+    if(lives<=0){state='over';showMsg('💀 Você caiu no vazio','Toque ou aperte ESPAÇO para tentar de novo')}
+    else{resetPlayer();P.inv=1.2}
+  }
+  const pb={x:P.x,y:P.y,w:P.w,h:P.h};
+  if(rectsOverlap(pb,goal)){
+    state='win';showMsg('👑 Fase 1 completa!','Toque ou aperte ESPAÇO para jogar de novo');
+  }
+  const targetCam=Math.max(0,Math.min(LEVEL_END-W+90,P.x-W*.4));
+  camX+=(targetCam-camX)*Math.min(1,dt*4);
+}
+
+/* ===== desenho (em resolução baixa = pixel art) ===== */
+const px=v=>Math.round(v/PIX);
+function drawBackground(){
+  octx.fillStyle='#241a14';octx.fillRect(0,0,OW,OH);
+  // parede de pedra em blocos
+  const bw=18,bh=12;
+  for(let row=0;row*bh<OH*.7+bh;row++){
+    const off2=row%2?bw/2:0;
+    for(let x=-bw+((px(camX*.3))%bw)*-1+off2;x<OW+bw;x+=bw){
+      octx.fillStyle=(row+Math.floor(x/bw))%2===0?'#453325':'#3a2a1e';
+      octx.fillRect(x,row*bh,bw-1,bh-1);
+      octx.fillStyle='rgba(0,0,0,.35)';octx.fillRect(x,row*bh+bh-2,bw-1,2);
+    }
+  }
+}
+function drawColumnTorch(x){
+  const bx=px(x-camX);if(bx<-20||bx>OW+20)return;
+  const top=Math.round(OH*.04),w=18,h=Math.round(OH*.68);
+  octx.fillStyle='#5a4736';octx.fillRect(bx-w/2,top,w,h);
+  octx.fillStyle='#3a2c1e';
+  for(let y=top;y<top+h;y+=8)octx.fillRect(bx-w/2,y,w,1);
+  octx.fillStyle='#665038';octx.fillRect(bx-w/2-4,top-6,w+8,6);
+  octx.fillStyle='#665038';octx.fillRect(bx-w/2-4,top+h,w+8,6);
+  // tocha (pixel, poucas cores planas)
+  const ty=top+h*.3;
+  octx.fillStyle='#2a1d12';octx.fillRect(bx-2,ty,4,12);
+  const flick=Math.floor(t*10+x)%2===0;
+  octx.fillStyle=flick?'#ffb23d':'#ff8c1a';
+  octx.fillRect(bx-4,ty-10,8,8);
+  octx.fillStyle=flick?'#ffe07a':'#ffcf4d';
+  octx.fillRect(bx-2,ty-14,4,6);
+  octx.fillStyle='rgba(255,150,40,.25)';
+  octx.beginPath();octx.arc(bx,ty-6,14,0,Math.PI*2);octx.fill();
+}
+function drawWindow(x){
+  const bx=px(x-camX);if(bx<-30||bx>OW+30)return;
+  const top=Math.round(OH*.08),w=26,h=Math.round(OH*.34);
+  // moldura de pedra
+  octx.fillStyle='#4a3a2a';octx.fillRect(bx-w/2-3,top-3,w+6,h+6);
+  // arco no topo (aproximado em pixels)
+  octx.fillStyle='#4a3a2a';
+  octx.fillRect(bx-w/2+2,top-9,w-4,6);
+  octx.fillRect(bx-w/2+5,top-13,w-10,4);
+  // vidro com céu noturno
+  octx.fillStyle='#10152a';octx.fillRect(bx-w/2,top,w,h);
+  octx.fillStyle='#e9e4c8';octx.fillRect(bx+4,top+6,4,4); // lua
+  for(let i=0;i<8;i++){
+    const rx=((x*13+i*37)%((w-4)))-w/2+2,ry=((x*7+i*53)%(h-6))+3;
+    octx.fillStyle=i%3===0?'#fff':'rgba(255,255,255,.6)';
+    octx.fillRect(bx+rx,top+ry,1,1);
+  }
+  // travessas da janela
+  octx.fillStyle='#4a3a2a';
+  octx.fillRect(bx-1,top,2,h);
+  octx.fillRect(bx-w/2,top+h*.5,w,2);
+}
+function drawPortrait(x){
+  const bx=px(x-camX);if(bx<-20||bx>OW+20)return;
+  const top=Math.round(OH*.14),w=18,h=22;
+  octx.fillStyle='#8a6a2a';octx.fillRect(bx-w/2-2,top-2,w+4,h+4);
+  octx.fillStyle='#241810';octx.fillRect(bx-w/2,top,w,h);
+  octx.fillStyle='#caa24a';octx.fillRect(bx-5,top+3,10,4); // coroa
+  octx.fillStyle='#d9b98a';octx.fillRect(bx-4,top+8,8,8); // rosto
+  octx.fillStyle='#5a1a1a';octx.fillRect(bx-6,top+16,12,6); // manto
+}
+function drawChain(pf){
+  const bx=px(pf.x-camX),w=px(pf.w);
+  const cx1=bx+Math.round(w*.25),cx2=bx+Math.round(w*.75);
+  const topY=Math.round(OH*.05),botY=px(pf.y);
+  octx.fillStyle='#9a9aa2';
+  [cx1,cx2].forEach(cx=>{
+    for(let y=topY;y<botY;y+=6){
+      octx.fillRect(cx-1,y,2,4);
+    }
+  });
+}
+function drawPlatform(pf){
+  const bx=px(pf.x),by=px(pf.y),bw=px(pf.w),bh=Math.max(2,px(pf.h));
+  if(pf.chain)drawChain(pf);
+  const sx=bx-px(camX);
+  octx.fillStyle='#5a4536';
+  octx.fillRect(sx,by,bw,bh);
+  // blocos de tijolo (brick block)
+  octx.fillStyle='#3a2c20';
+  for(let x=0;x<bw;x+=8){
+    octx.fillRect(sx+x,by,Math.min(8,bw-x)-1,Math.min(bh,6)-1);
+  }
+  octx.fillStyle='#6b5646';octx.fillRect(sx,by,bw,1);
+}
+function drawGoal(){
+  const bx=px(goal.x-camX),by=px(goal.y),bw=px(goal.w),bh=px(goal.h);
+  octx.fillStyle='#3a2a1a';octx.fillRect(bx-3,by-4,bw+6,bh+8);
+  octx.fillStyle='#8a1414';octx.fillRect(bx+3,by+6,bw-6,bh-6);
+  octx.fillStyle='#caa24a';octx.fillRect(bx+bw/2-3,by-2,6,6);
+}
+function drawPlayer(){
+  if(P.inv>0&&Math.floor(t*14)%2===0)return;
+  const bx=px(P.x-camX),by=px(P.y),flip=P.dir<0;
+  const w=px(P.w),h=px(P.h);
+  octx.save();
+  if(flip){octx.translate(bx+w,by);octx.scale(-1,1);}else{octx.translate(bx,by);}
+  const walk=P.onGround&&Math.abs(P.vx)>10?Math.floor(t*8)%2:0;
+  // capa preta (mais larga embaixo)
+  octx.fillStyle='#0c0c0e';
+  octx.fillRect(1,4,w-2,h-8);
+  octx.fillRect(-1,h-10,w+2,8+walk);
+  // capuz
+  octx.fillStyle='#0c0c0e';
+  octx.fillRect(2,-2,w-4,8);
+  octx.fillStyle='#050506';octx.fillRect(3,1,w-6,5); // sombra dentro do capuz
+  // olhos vermelhos brilhando
+  octx.fillStyle='#ff1a1a';
+  octx.fillRect(w*.32,3,2,2);
+  octx.fillRect(w*.58,3,2,2);
+  octx.restore();
+}
+function draw(){
+  drawBackground();
+  for(const w of windowXs)drawWindow(w);
+  for(const p of portraits)drawPortrait(p);
+  for(const c of columns)drawColumnTorch(c);
+  for(const pf of platforms)drawPlatform(pf);
+  drawGoal();
+  drawPlayer();
+}
+
+let last=performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.033,(now-last)/1000);last=now;
+  update(dt);
+  octx.clearRect(0,0,OW,OH);
+  draw();
+  ctx.clearRect(0,0,W,H);
+  ctx.drawImage(off,0,0,OW,OH,0,0,W,H);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
