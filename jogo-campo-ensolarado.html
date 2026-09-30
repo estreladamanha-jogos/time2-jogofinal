@@ -110,6 +110,19 @@ const chest={x:2650,y:GROUND_Y,opened:false};
 const LEVEL_END2=1300;
 const goal2={x:LEVEL_END2,y:GROUND_Y-190,w:70,h:190};
 const platforms2=[{x:0,y:GROUND_Y,w:LEVEL_END2+400,h:260,ground:true}];
+// fase 3: dentro do castelo, guardas reais com lanças patrulhando até o trono
+const LEVEL_END3=1500;
+const goal3={x:LEVEL_END3,y:GROUND_Y-150,w:60,h:150};
+const platforms3=[{x:0,y:GROUND_Y,w:LEVEL_END3+400,h:260,ground:true}];
+const guardsData=[
+  {x:400,pMin:320,pMax:520,w:30,h:70},
+  {x:750,pMin:660,pMax:880,w:30,h:70},
+  {x:1100,pMin:1000,pMax:1250,w:30,h:70},
+];
+let guards=[];
+function resetGuards(){
+  guards=guardsData.map(g=>({...g,dir:Math.random()<.5?1:-1,spd:.45+Math.random()*.3,alive:true,hitT:0}));
+}
 
 /* ===== estado ===== */
 const HEALTH_MAX=6; // 3 corações, cada um vale 2 (meio coração = 1)
@@ -141,7 +154,7 @@ function showTitleUI(){
   $('hud').classList.add('off');
 }
 function start(){
-  selectedChar='jacob';phase=1;hasBow=false;arrowCount=0;flyingArrows=[];chest.opened=false;
+  selectedChar='jacob';phase=1;hasBow=false;arrowCount=0;flyingArrows=[];chest.opened=false;guards=[];
   score=0;health=HEALTH_MAX;setScore();setHearts();setAmmo();resetPlayer();resetMonsters();
   coins.forEach(c=>c.got=false);
   state='playing';hideMsg();
@@ -203,7 +216,7 @@ function update(dt){
   const oy=P.y;
   P.y+=P.vy*dt;
   P.onGround=false;
-  const floorList=phase===1?[...platforms,...blocks]:platforms2;
+  const floorList=phase===1?[...platforms,...blocks]:phase===2?platforms2:platforms3;
   for(const pf of floorList){
     if(P.x+P.w>pf.x&&P.x<pf.x+pf.w){
       if(P.vy>=0&&oy+P.h<=pf.y+10&&P.y+P.h>=pf.y){
@@ -237,7 +250,26 @@ function update(dt){
     // baú: mostra dica pra abrir quando o jogador está perto
     if(nearChest())$('prompt').classList.add('show');else $('prompt').classList.remove('show');
   }
-  // flechas: voam retas e matam o monstro que acertarem
+  if(phase===3){
+    // guardas reais com lanças: patrulham e tiram meio coração ao encostar (a lança machuca mais de longe)
+    for(const g of guards){
+      if(!g.alive)continue;
+      if(g.hitT>0)g.hitT-=dt;
+      g.x+=g.dir*30*g.spd*dt;
+      if(g.x<=g.pMin){g.x=g.pMin;g.dir=1}else if(g.x>=g.pMax){g.x=g.pMax;g.dir=-1}
+      const spearReach=g.dir>0?18:-18;
+      const gb={x:g.x-g.w/2+Math.min(0,spearReach),y:GROUND_Y-g.h,w:g.w+Math.abs(spearReach),h:g.h};
+      if(rectsOverlap(pb,gb)){
+        if(P.vy>0&&P.y+P.h-10<GROUND_Y-g.h+16){
+          g.alive=false;P.vy=JUMP*.55;P.inv=.3;
+        }else if(P.inv<=0){
+          health--;setHearts();P.inv=1;P.vy=-360;P.vx=-P.dir*180;
+          if(health<=0){state='over';showMsg('🗡️ Os guardas pegaram você','Toque ou aperte ESPAÇO para tentar de novo')}
+        }
+      }
+    }
+  }
+  // flechas: voam retas e matam o monstro/guarda que acertarem
   for(const a of flyingArrows){
     a.x+=a.vx*dt;
     if(phase===1)for(const m of monsters){
@@ -245,23 +277,33 @@ function update(dt){
       const mb={x:m.x-m.w/2,y:GROUND_Y-m.h,w:m.w,h:m.h};
       if(a.x>mb.x&&a.x<mb.x+mb.w&&!a.hit){a.hit=true;m.alive=false}
     }
+    if(phase===3)for(const g of guards){
+      if(!g.alive)continue;
+      const gb={x:g.x-g.w/2,y:GROUND_Y-g.h,w:g.w,h:g.h};
+      if(a.x>gb.x&&a.x<gb.x+gb.w&&!a.hit){a.hit=true;g.alive=false}
+    }
   }
   flyingArrows=flyingArrows.filter(a=>!a.hit&&Math.abs(a.x-camX)<W+100);
   // avança a fase da passada só enquanto anda no chão (animação de corrida)
   if(P.onGround&&Math.abs(P.vx)>10)walkPhase+=dt*12;else walkPhase=0;
   if(P.y>H+300){resetPlayer()}
-  const curGoal=phase===1?goal:goal2;
+  const curGoal=phase===1?goal:phase===2?goal2:goal3;
   if(state==='playing'&&rectsOverlap(pb,curGoal)){
     if(phase===1){
       phase=2;resetPlayer();$('prompt').classList.remove('show');
       $('lv').textContent='Fase 2 · O Castelo';
       showMsg('🏰 Fase 2: o Castelo','Atravesse o portão!');
       setTimeout(()=>{if(state==='playing')hideMsg()},1800);
+    }else if(phase===2){
+      phase=3;resetPlayer();resetGuards();
+      $('lv').textContent='Fase 3 · Guardas Reais';
+      showMsg('🗡️ Cuidado, guardas reais!','Pule neles ou atire flechas pra passar');
+      setTimeout(()=>{if(state==='playing')hideMsg()},1800);
     }else{
-      state='win';showMsg('👑 Você entrou no castelo!','Moedas: '+score+' — Toque ou aperte ESPAÇO para jogar de novo');
+      state='win';showMsg('👑 Você venceu os guardas!','Moedas: '+score+' — Toque ou aperte ESPAÇO para jogar de novo');
     }
   }
-  const curEnd=phase===1?LEVEL_END:LEVEL_END2;
+  const curEnd=phase===1?LEVEL_END:phase===2?LEVEL_END2:LEVEL_END3;
   const targetCam=Math.max(0,Math.min(curEnd-W+90,P.x-W*.4));
   camX+=(targetCam-camX)*Math.min(1,dt*4);
 }
@@ -578,6 +620,60 @@ function drawCastle(cam){
   ctx.fillStyle='#2a1a10';
   ctx.beginPath();ctx.roundRect(goal2.x-camX-goal2.w/2+8,goal2.y+10,goal2.w-16,goal2.h-10,[goal2.w/2-6,goal2.w/2-6,0,0]);ctx.fill();
 }
+// guarda real: armadura prateada, capacete e uma lança comprida apontada pra frente
+function drawGuard(g){
+  if(!g.alive)return;
+  const x=g.x-camX;if(x<-60||x>W+60)return;
+  const y=GROUND_Y,flip=g.dir<0;
+  drawShadow(x,y+2,g.w*.5);
+  ctx.save();
+  if(flip){ctx.translate(x+g.w/2,y);ctx.scale(-1,1);}else{ctx.translate(x-g.w/2,y);}
+  const walk=Math.sin(t*7+g.x)*.08;
+  // pernas
+  ctx.fillStyle='#2a2a30';
+  ctx.beginPath();ctx.roundRect(4,-26,9,26,3);ctx.fill();outline(2.5);
+  ctx.beginPath();ctx.roundRect(g.w-13,-26,9,26,3);ctx.fill();outline(2.5);
+  // lança (cabo + ponta), sempre à frente
+  ctx.strokeStyle='#6a4526';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(g.w-6,-g.h*.72);ctx.lineTo(g.w+34,-g.h*.9-walk*20);ctx.stroke();
+  ctx.fillStyle='#c7ccd6';
+  ctx.beginPath();ctx.moveTo(g.w+34,-g.h*.9-walk*20);ctx.lineTo(g.w+24,-g.h*.98-walk*20);ctx.lineTo(g.w+44,-g.h*.98-walk*20);ctx.closePath();ctx.fill();outline(1.8);
+  // corpo com armadura
+  const armorG=ctx.createLinearGradient(0,-g.h*.75,0,-g.h*.3);
+  armorG.addColorStop(0,'#c7ccd6');armorG.addColorStop(1,'#8a909c');
+  ctx.fillStyle=armorG;
+  ctx.beginPath();ctx.roundRect(2,-g.h*.75,g.w-4,g.h*.46,5);ctx.fill();outline(3);
+  ctx.fillStyle='#8a1414';
+  ctx.beginPath();ctx.roundRect(g.w*.35,-g.h*.7,g.w*.3,g.h*.34,2);ctx.fill();
+  // braços
+  ctx.fillStyle='#8a909c';
+  ctx.beginPath();ctx.roundRect(-3,-g.h*.72,6,16,3);ctx.fill();outline(2);
+  ctx.beginPath();ctx.roundRect(g.w-3,-g.h*.72,6,16,3);ctx.fill();outline(2);
+  // capacete com viseira
+  ctx.fillStyle='#9aa0ac';
+  ctx.beginPath();ctx.arc(g.w/2,-g.h*.82,10,Math.PI,0);ctx.fill();outline(2.5);
+  ctx.fillStyle='#c7ccd6';ctx.beginPath();ctx.roundRect(g.w/2-10,-g.h*.82,20,7,2);ctx.fill();outline(2);
+  ctx.fillStyle='#1a1410';ctx.fillRect(g.w/2-4,-g.h*.8,8,3);
+  ctx.fillStyle='#caa24a';
+  ctx.beginPath();ctx.moveTo(g.w/2,-g.h*.92-6);ctx.lineTo(g.w/2-3,-g.h*.92);ctx.lineTo(g.w/2+3,-g.h*.92);ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+// pátio interno do castelo (fase 3): paredes de pedra com tochas
+function drawCastleInterior(cam){
+  ctx.fillStyle='#3a3230';
+  ctx.fillRect(0,0,W,GROUND_Y+20);
+  ctx.fillStyle='#4a4038';
+  for(let x=-((cam*.6)%90);x<W+90;x+=90){
+    ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;
+    ctx.strokeRect(x,60,84,GROUND_Y-40);
+  }
+  // trono no fim da fase (goal3)
+  const gx=goal3.x-cam;
+  ctx.fillStyle='#caa24a';
+  ctx.beginPath();ctx.roundRect(gx-30,GROUND_Y-goal3.h,60,goal3.h,[10,10,0,0]);ctx.fill();outline(3.5);
+  ctx.fillStyle='#8a1414';
+  ctx.beginPath();ctx.roundRect(gx-20,GROUND_Y-goal3.h+18,40,goal3.h-30,4);ctx.fill();outline(2.5);
+}
 function drawGoalFlag(){
   const x=goal.x-camX;if(x<-40||x>W+40)return;
   const y=goal.y;
@@ -602,9 +698,13 @@ function draw(){
     for(const m of monsters)drawMonster(m);
     drawChest();
     drawGoalFlag();
-  }else{
+  }else if(phase===2){
     drawGround(camX);
     drawCastle(camX);
+  }else{
+    drawCastleInterior(camX);
+    drawGround(camX);
+    for(const g of guards)drawGuard(g);
   }
   for(const a of flyingArrows)drawArrow(a);
   drawPlayer();
