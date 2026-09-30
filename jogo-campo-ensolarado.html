@@ -53,10 +53,14 @@ const PIX=2;
 const off=document.createElement('canvas'),ctx=off.getContext('2d');
 const rctx=cv.getContext('2d');
 let OW=0,OH=0;
+let skyGrad=null;
 function resize(){
   W=cv.width=innerWidth;H=cv.height=innerHeight;
   OW=off.width=Math.ceil(W/PIX);OH=off.height=Math.ceil(H/PIX);
   rctx.imageSmoothingEnabled=false;ctx.imageSmoothingEnabled=false;
+  // gradiente do céu calculado só quando a tela muda de tamanho (economiza trabalho por frame)
+  skyGrad=ctx.createLinearGradient(0,0,0,H);
+  skyGrad.addColorStop(0,'#5bb8ec');skyGrad.addColorStop(.7,'#a6e0f5');skyGrad.addColorStop(1,'#cdeffa');
 }
 addEventListener('resize',resize);resize();
 if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
@@ -79,8 +83,8 @@ const coins=blocks.map(b=>({x:b.x+b.w/2,y:b.y-30,got:false}));
 const bushes=[150,340,780,1080,1480,1820,2180,2520].map(x=>({x}));
 const trees=[260,700,1150,1600,1950,2350,2680].map((x,i)=>({x,tall:i%2===0}));
 const clouds=[100,500,950,1400,1850,2300,2700].map((x,i)=>({x0:x,y:60+((i*37)%90),spd:8+((i*13)%12)}));
-// meta: a Helena esperando no fim da fase
-const goal={x:LEVEL_END,y:GROUND_Y-84,w:34,h:84};
+// meta: bandeira no fim da fase
+const goal={x:LEVEL_END,y:GROUND_Y-140,w:34,h:140};
 // monstros: uma lagarta (estilo Pokémon) e um urso maior que o personagem, que tiram meio coração ao encostar
 const monstersData=[
   {type:'bug',x:480,pMin:420,pMax:640,w:38,h:24},
@@ -188,7 +192,7 @@ function update(dt){
   }
   if(P.y>H+300){resetPlayer()}
   if(state==='playing'&&rectsOverlap(pb,goal)){
-    state='win';showMsg('💛 Você encontrou a Helena!','Moedas: '+score+' — Toque ou aperte ESPAÇO para jogar de novo');
+    state='win';showMsg('🏁 Fase 1 completa!','Moedas: '+score+' — Toque ou aperte ESPAÇO para jogar de novo');
   }
   const targetCam=Math.max(0,Math.min(LEVEL_END-W+90,P.x-W*.4));
   camX+=(targetCam-camX)*Math.min(1,dt*4);
@@ -196,9 +200,7 @@ function update(dt){
 
 /* ===== desenho (tudo em baixa resolução = pixel art nítido) ===== */
 function drawSky(cam){
-  const g=ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#5bb8ec');g.addColorStop(.7,'#a6e0f5');g.addColorStop(1,'#cdeffa');
-  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=skyGrad;ctx.fillRect(0,0,W,H);
   ctx.fillStyle='#ffdd55';
   ctx.beginPath();ctx.arc(W*.82,H*.16,46,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='rgba(255,221,85,.35)';
@@ -223,12 +225,13 @@ function drawGround(cam){
   ctx.fillRect(0,GROUND_Y+18,W,H-GROUND_Y);
   ctx.fillStyle='#5ea832';
   ctx.fillRect(0,GROUND_Y,W,22);
+  // grama desenhada num único traçado (menos chamadas de desenho = mais fluido)
   ctx.fillStyle='#4a8f26';
+  ctx.beginPath();
   for(let x=-((cam*1)%20);x<W+20;x+=20){
-    ctx.beginPath();
     ctx.moveTo(x,GROUND_Y+2);ctx.lineTo(x+6,GROUND_Y-6);ctx.lineTo(x+12,GROUND_Y+2);
-    ctx.fill();
   }
+  ctx.fill();
 }
 function drawTree(x,tall,cam){
   const bx=x-cam;if(bx<-80||bx>W+80)return;
@@ -298,31 +301,6 @@ function drawMan(x,y,dir,legSwing){
   ctx.fillStyle='#1a1410';ctx.fillRect(21,1,3,3);
   ctx.restore();
 }
-// mulher (Helena): cabelo loiro, olhos azuis, vestido rosa, sapato branco
-function drawWoman(x,y,dir,legSwing){
-  ctx.save();
-  if(dir<0){ctx.translate(x+30,y);ctx.scale(-1,1);}else{ctx.translate(x,y);}
-  const lo=legSwing*3;
-  ctx.fillStyle='#fff';
-  ctx.fillRect(4,60,9,8-lo);ctx.fillRect(17,60,9,8+lo);
-  ctx.fillStyle='#f2b8cc';
-  ctx.beginPath();
-  ctx.moveTo(6,26);ctx.lineTo(24,26);ctx.lineTo(28,60);ctx.lineTo(2,60);
-  ctx.closePath();ctx.fill();
-  ctx.fillStyle='#e893b3';ctx.fillRect(6,26,18,8);
-  ctx.fillStyle='#f2b8cc';
-  ctx.fillRect(-1,22,5,14);ctx.fillRect(26,22,5,14);
-  ctx.fillStyle='#f0c8a0';
-  ctx.fillRect(-2,24,4,9);ctx.fillRect(28,24,4,9);
-  ctx.fillStyle='#f0c8a0';
-  ctx.beginPath();ctx.arc(15,10,11,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#f2d33c';
-  ctx.beginPath();ctx.arc(15,4,13,Math.PI,0);ctx.fill();
-  ctx.fillRect(2,2,4,20);ctx.fillRect(24,2,4,20);
-  ctx.fillStyle='#3a7fd9';ctx.fillRect(11,10,3,3);ctx.fillRect(18,10,3,3);
-  ctx.fillStyle='#e893b3';ctx.fillRect(9,15,12,3);
-  ctx.restore();
-}
 // lagarta estilo Pokémon (verde, segmentada, olhos grandes)
 function drawBug(m){
   const x=m.x-camX;if(x<-60||x>W+60)return;
@@ -380,9 +358,17 @@ function drawPlayer(){
   const legSwing=moving?Math.sin(t*14):0;
   drawMan(P.x-camX,P.y,P.dir,legSwing);
 }
-function drawGoalChar(){
-  const bob=Math.sin(t*2)*3;
-  drawWoman(goal.x-camX,goal.y+bob,-1,Math.sin(t*2)*.4);
+function drawGoalFlag(){
+  const x=goal.x-camX;if(x<-40||x>W+40)return;
+  const y=goal.y;
+  ctx.fillStyle='#8a5a2e';ctx.fillRect(x-3,y,6,goal.h);
+  const wave=Math.sin(t*4)*4;
+  ctx.fillStyle='#e8536b';
+  ctx.beginPath();
+  ctx.moveTo(x+3,y+4);ctx.lineTo(x+40+wave,y+16);ctx.lineTo(x+3,y+30);
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle='#ffcf4d';
+  ctx.beginPath();ctx.arc(x,y-3,5,0,Math.PI*2);ctx.fill();
 }
 function draw(){
   drawSky(camX);
@@ -392,7 +378,7 @@ function draw(){
   for(const bl of blocks)drawBlock(bl,camX);
   for(const c of coins)drawCoin(c,camX);
   for(const m of monsters)drawMonster(m);
-  drawGoalChar();
+  drawGoalFlag();
   drawPlayer();
 }
 
