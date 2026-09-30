@@ -142,7 +142,8 @@ body.touch.ingame #touch{display:block}
       <li><b>❓ Blocos de interrogação:</b> pule por baixo deles para ganhar moedas-estrela 🌟.</li>
       <li><b>🧱 Degraus de tijolo:</b> servem para subir nas partes mais altas do caminho.</li>
       <li><b>🟨 Plataformas de areia flutuantes:</b> suba nelas para pegar a moeda-estrela em cima.</li>
-      <li><b>🪨 Pedras</b> e <b>💧 lagos:</b> obstáculos no chão, pule por cima deles.</li>
+      <li><b>🪨 Pedras:</b> obstáculo no chão, pule por cima dela.</li>
+      <li><b>💧 Lagos:</b> entre na água e boie nadando para atravessar até o outro lado.</li>
       <li><b>🪵 Gravetos (pelo menos 2 por fase):</b> aperte <b>E</b> perto para pegar, e aperte <b>E</b> de novo para arremessar nos inimigos (tira 5% da vida deles).</li>
     </ul>
     <button class="btn" id="bBack">Voltar</button>
@@ -1256,6 +1257,7 @@ function updateElevs(dt){
   }
 }
 function zoneBase(x){for(const z of LV.zones)if(x>=z.x0&&x<=z.x1)return z.base;return LV.zones[LV.zones.length-1].base}
+function inLake(x){for(const lk of LV.lakes)if(x>=lk.x0&&x<=lk.x1)return lk;return null}
 function step(dt){
   gt+=dt;
   updateMovers();updateElevs(dt);
@@ -1290,29 +1292,39 @@ function step(dt){
     }
   }
   // Y
-  P.vy=Math.max(P.vy-GRAV*dt,-30);
-  const oy=P.y,wasG=P.ground,pvy=P.vy;
-  P.y+=P.vy*dt;P.ground=false;P.gobj=null;
-  for(const c of near(P.x)){
-    if(ovl(c,P.x,P.y,P.h)){
-      if(P.vy<=0&&oy>=c.y1-.7){P.y=c.y1;P.vy=0;P.ground=true;P.gobj=c}
-      else if(P.vy>0){
-        P.y=c.y0-P.h;P.vy=0;
-        if(c.k==='q'&&!c.used){
-          c.used=true;c.bumpT=.22;SFX.bump();
-          spawnCoinPop((c.x0+c.x1)/2,c.y1+.6);
-          if(c.m&&c.m.userData){c.m.userData.mat.map=qmarkUsedTexture();c.m.userData.mat.needsUpdate=true}
+  const lk=inLake(P.x);
+  P.swim=!!lk;
+  if(lk){
+    // dentro da água: boia e nada, sem afundar nem cair no vazio
+    const target=lk.y-.5+Math.sin(gt*2.2)*.15;
+    P.y+=(target-P.y)*Math.min(1,dt*4);
+    P.vy=0;P.ground=false;P.gobj=null;
+    P.safe={x:clamp(P.x,lk.x0+HW+.2,lk.x1-HW-.2),y:lk.y};
+  }else{
+    P.vy=Math.max(P.vy-GRAV*dt,-30);
+    const oy=P.y,wasG=P.ground,pvy=P.vy;
+    P.y+=P.vy*dt;P.ground=false;P.gobj=null;
+    for(const c of near(P.x)){
+      if(ovl(c,P.x,P.y,P.h)){
+        if(P.vy<=0&&oy>=c.y1-.7){P.y=c.y1;P.vy=0;P.ground=true;P.gobj=c}
+        else if(P.vy>0){
+          P.y=c.y0-P.h;P.vy=0;
+          if(c.k==='q'&&!c.used){
+            c.used=true;c.bumpT=.22;SFX.bump();
+            spawnCoinPop((c.x0+c.x1)/2,c.y1+.6);
+            if(c.m&&c.m.userData){c.m.userData.mat.map=qmarkUsedTexture();c.m.userData.mat.needsUpdate=true}
+          }
         }
       }
     }
-  }
-  if(P.ground&&!wasG&&pvy<-9)SFX.land();
-  if(P.ground&&P.gobj&&P.gobj.k&&P.gobj.k!=='c'){
-    const g=P.gobj;P.safe={x:clamp(P.x-P.dir*1.5,g.x0+HW+.2,g.x1-HW-.2),y:g.y1};
+    if(P.ground&&!wasG&&pvy<-9)SFX.land();
+    if(P.ground&&P.gobj&&P.gobj.k&&P.gobj.k!=='c'){
+      const g=P.gobj;P.safe={x:clamp(P.x-P.dir*1.5,g.x0+HW+.2,g.x1-HW-.2),y:g.y1};
+    }
   }
   P.maxX=Math.max(P.maxX,P.x);
-  // queda no vazio
-  if(P.y<zoneBase(P.x)-14&&state==='playing')loseLife();
+  // queda no vazio (não conta dentro da água)
+  if(!lk&&P.y<zoneBase(P.x)-14&&state==='playing')loseLife();
   // portal
   if(state==='playing'&&P.ground&&Math.abs(P.x-LV.portal.x)<1.4&&Math.abs(P.y-LV.portal.y)<1)beginEnter();
 }
