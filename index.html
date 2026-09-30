@@ -1295,10 +1295,18 @@ function step(dt){
   const lk=inLake(P.x);
   P.swim=!!lk;
   if(lk){
-    // dentro da água: boia e nada, sem afundar nem cair no vazio
-    const target=lk.y-.5+Math.sin(gt*2.2)*.15;
-    P.y+=(target-P.y)*Math.min(1,dt*4);
-    P.vy=0;P.ground=false;P.gobj=null;
+    // dentro da água: boia, nada e também consegue pular dentro dela
+    P.ground=false;P.gobj=null;
+    const surface=lk.y-.5+Math.sin(gt*2.2)*.15;
+    if(jumpState.buf>0&&state==='playing'){
+      P.vy=JUMP*.62;jumpState.buf=0;SFX.jump();
+    }else{
+      // empuxo da água: puxa de volta pra superfície, mas deixa subir com o pulo
+      P.vy+=(surface-P.y)*6*dt-GRAV*.15*dt;
+      P.vy=clamp(P.vy,-4,JUMP*.62);
+    }
+    P.y+=P.vy*dt;
+    if(P.y<surface-1.8){P.y=surface-1.8;P.vy=Math.max(P.vy,0)}
     P.safe={x:clamp(P.x,lk.x0+HW+.2,lk.x1-HW-.2),y:lk.y};
   }else{
     P.vy=Math.max(P.vy-GRAV*dt,-30);
