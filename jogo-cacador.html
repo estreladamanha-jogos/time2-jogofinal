@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Caçador de Recompensas</title>
+<title>Caçador de Recompensas 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 :root{--ink:#fff3d4;--btn:#ffcf4d;--btn-ink:#3a2412}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
@@ -40,32 +41,28 @@ body.touch #touch{display:block}
 <script>
 (function(){
 'use strict';
-const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const cv=document.getElementById('c');
 const $=id=>document.getElementById(id);
-let W=0,H=0;
-function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight}
-addEventListener('resize',resize);resize();
+let W=innerWidth,H=innerHeight;
 if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
 
-/* ===== mundo da fase 1: salão medieval de pedra ===== */
+/* ===== mundo da fase 1 (física em "pixels") ===== */
 const GRAV=1500,JUMP=-620,SPEED=270,GROUND_Y=620;
 const LEVEL_END=3100;
-// chão de pedra com buracos (precisa pular pelas plataformas de corrente)
+// chão de pedra agora contínuo (sem buracos) — plataformas de corrente ficam como bônus
 const platforms=[
-  {x:0,y:GROUND_Y,w:420,h:200,ground:true},
-  {x:560,y:GROUND_Y-120,w:150,h:24,chain:true,anchorY:40},
-  {x:860,y:GROUND_Y,w:260,h:200,ground:true},
-  {x:1260,y:GROUND_Y-90,w:140,h:24,chain:true,anchorY:40},
-  {x:1520,y:GROUND_Y-170,w:140,h:24,chain:true,anchorY:40},
-  {x:1780,y:GROUND_Y-90,w:140,h:24,chain:true,anchorY:40},
-  {x:2040,y:GROUND_Y,w:220,h:200,ground:true},
-  {x:2380,y:GROUND_Y-110,w:150,h:24,chain:true,anchorY:40},
-  {x:2650,y:GROUND_Y-200,w:150,h:24,chain:true,anchorY:40},
-  {x:2920,y:GROUND_Y,w:LEVEL_END+400-2920,h:200,ground:true},
+  {x:0,y:GROUND_Y,w:LEVEL_END+400,h:200,ground:true},
+  {x:560,y:GROUND_Y-120,w:150,h:24,chain:true},
+  {x:1260,y:GROUND_Y-90,w:140,h:24,chain:true},
+  {x:1520,y:GROUND_Y-170,w:140,h:24,chain:true},
+  {x:1780,y:GROUND_Y-90,w:140,h:24,chain:true},
+  {x:2380,y:GROUND_Y-110,w:150,h:24,chain:true},
+  {x:2650,y:GROUND_Y-200,w:150,h:24,chain:true},
 ];
-// colunas de pedra com tochas de fogo (decoração)
-const columns=[120,480,1000,1400,1700,2000,2320,2700,3050].map(x=>({x}));
-// moedas em cima das plataformas
+const columns=[120,480,1000,1400,1700,2000,2320,2700,3050];
+const tableSets=[300,1080,1900,2550].map(x=>({x}));
+const portraits=[700,1350,2100,2820].map(x=>({x}));
+const vases=[420,980,1620,2250,2900].map((x,i)=>({x,side:i%2===0?1:-1}));
 const coins=[];
 for(const pf of platforms){
   if(pf.chain){
@@ -73,7 +70,7 @@ for(const pf of platforms){
     coins.push({x:pf.x+pf.w*.7,y:pf.y-34,got:false});
   }
 }
-[960,1010,2080,2130,2180].forEach(x=>coins.push({x,y:GROUND_Y-40,got:false}));
+[840,2080,2130,2180].forEach(x=>coins.push({x,y:GROUND_Y-40,got:false}));
 const goal={x:LEVEL_END,y:GROUND_Y-150,w:70,h:150};
 
 /* ===== estado ===== */
@@ -84,20 +81,14 @@ function setLives(){$('lives').textContent='❤️'.repeat(Math.max(0,lives))+'�
 function setScore(){$('score').textContent='🪙 '+score}
 function showMsg(txt,sub){$('msgTxt').textContent=txt;$('msgSub').textContent=sub||'';$('msg').classList.remove('off')}
 function hideMsg(){$('msg').classList.add('off')}
-
-function start(){
-  lives=3;score=0;setLives();setScore();resetPlayer();coins.forEach(c=>c.got=false);state='playing';hideMsg();
-}
-showMsg('🗡️ Caçador de Recompensas','Toque ou aperte ESPAÇO para começar — pegue as moedas e não caia!');
+function start(){lives=3;score=0;setLives();setScore();resetPlayer();coins.forEach(c=>c.got=false);state='playing';hideMsg()}
 addEventListener('keydown',e=>{
   if((state==='title'||state==='over'||state==='win')&&(e.code==='Space'||e.code==='Enter')){start();return}
   keys[e.code]=true;
   if(!e.repeat&&(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'))jumpBuf=.12;
 });
 addEventListener('keyup',e=>{keys[e.code]=false});
-cv.addEventListener('pointerdown',()=>{
-  if(state==='title'||state==='over'||state==='win')start();
-});
+cv.addEventListener('pointerdown',()=>{if(state==='title'||state==='over'||state==='win')start()});
 $('bl').addEventListener('pointerdown',e=>{e.preventDefault();touchL=1});
 $('br').addEventListener('pointerdown',e=>{e.preventDefault();touchR=1});
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>{
@@ -134,20 +125,17 @@ function update(dt){
       }
     }
   }
-  // moedas
   const pb={x:P.x,y:P.y,w:P.w,h:P.h};
   for(const c of coins){
     if(c.got)continue;
     const cb={x:c.x-12,y:c.y-12,w:24,h:24};
     if(rectsOverlap(pb,cb)){c.got=true;score++;setScore()}
   }
-  // caiu no buraco
-  if(P.y>H+250){
+  if(P.y>H+3000){
     lives--;setLives();
     if(lives<=0){state='over';showMsg('💀 Você caiu no vazio','Toque ou aperte ESPAÇO para tentar de novo')}
     else{resetPlayer();P.inv=1.2}
   }
-  // chegou na meta
   if(rectsOverlap(pb,goal)){
     state='win';showMsg('👑 Fase 1 completa!','Moedas: '+score+' — Toque ou aperte ESPAÇO para jogar de novo');
   }
@@ -155,130 +143,215 @@ function update(dt){
   camX+=(targetCam-camX)*Math.min(1,dt*4);
 }
 
-/* ===== desenho ===== */
-function drawBackground(){
-  const g=ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#1c1410');g.addColorStop(1,'#362519');
-  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;
-  const bw=82,bh=56;
-  for(let row=0;row*bh<H*.68+bh;row++){
+/* ===== mundo 3D (Three.js) ===== */
+const S=40;
+const wx=px=>px/S;
+const wy=py=>(GROUND_Y-py)/S;
+const X0=-3, XEND=(LEVEL_END+400)/S;
+const CEIL=6.4;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x120c08);
+scene.fog=new THREE.FogExp2(0x120c08,.02);
+const camera=new THREE.PerspectiveCamera(58,W/H,.1,300);
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(W,H);
+function resize(){W=innerWidth;H=innerHeight;camera.aspect=W/H;camera.updateProjectionMatrix();renderer.setSize(W,H)}
+addEventListener('resize',resize);
+
+scene.add(new THREE.HemisphereLight(0xaa8866,0x140b06,.6));
+const sun=new THREE.DirectionalLight(0xffcf9a,.3);
+sun.position.set(8,15,6);scene.add(sun);
+
+function PM(color,opts){return new THREE.MeshStandardMaterial(Object.assign({color,roughness:.8,metalness:.08},opts||{}))}
+function mesh(geo,mat,x,y,z){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);scene.add(m);return m}
+function texFromCanvas(draw,w,h){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),w,h);return new THREE.CanvasTexture(c)}
+function seededRand(n){const s=Math.sin(n*12.9898)*43758.5453;return s-Math.floor(s)}
+
+/* chão de pedra, bem plano e visível */
+const floorTex=texFromCanvas((c,w,h)=>{
+  c.fillStyle='#7a7168';c.fillRect(0,0,w,h);
+  c.strokeStyle='rgba(20,15,10,.55)';c.lineWidth=3;
+  for(let y=0;y<h;y+=32)for(let x=0;x<w;x+=32){
+    c.strokeRect(x,y,32,32);
+    c.fillStyle=`rgba(0,0,0,${.03+seededRand(x+y)*.07})`;c.fillRect(x,y,32,32);
+    c.fillStyle='rgba(255,255,255,.05)';c.fillRect(x+2,y+2,10,3);
+  }
+},256,256);
+floorTex.wrapS=floorTex.wrapT=THREE.RepeatWrapping;
+const floorW=XEND-X0;
+floorTex.repeat.set(floorW*.55,3.2);
+const floorMesh=mesh(new THREE.PlaneGeometry(floorW,7.5),PM(0xffffff,{map:floorTex,roughness:.92}),X0+floorW/2,0,0);
+floorMesh.rotation.x=-Math.PI/2;
+
+/* paredes de pedra */
+const brickTex=texFromCanvas((c,w,h)=>{
+  c.fillStyle='#352a20';c.fillRect(0,0,w,h);
+  c.strokeStyle='rgba(0,0,0,.5)';c.lineWidth=3;
+  const bw=46,bh=26;
+  for(let row=0;row*bh<h+bh;row++){
     const off=row%2?bw/2:0;
-    for(let x=-bw+((camX*.3)%bw)*-1+off;x<W+bw;x+=bw){
-      ctx.fillStyle='rgba(255,255,255,.04)';ctx.fillRect(x+2,row*bh+2,bw-4,4);
-      ctx.strokeRect(x,row*bh,bw,bh);
+    for(let x=-bw+off;x<w+bw;x+=bw){
+      c.fillStyle='rgba(255,255,255,.05)';c.fillRect(x+2,row*bh+2,bw-4,4);
+      c.strokeRect(x,row*bh,bw,bh);
     }
   }
+},256,256);
+brickTex.wrapS=brickTex.wrapT=THREE.RepeatWrapping;brickTex.repeat.set(floorW*.5,2.1);
+const WALL_Z=3.75;
+[-1,1].forEach(side=>{
+  const wall=mesh(new THREE.PlaneGeometry(floorW+10,7.2),PM(0xffffff,{map:brickTex}),X0+floorW/2,3.5,WALL_Z*side);
+  wall.rotation.y=side>0?Math.PI:0;
+});
+
+/* colunas de pedra com tochas de fogo tremeluzentes */
+const torchLights=[];
+function makeColumnTorch(px,side){
+  const x=wx(px),z=WALL_Z*side-side*.4;
+  mesh(new THREE.CylinderGeometry(.4,.48,5.8,12),PM(0x4a3e30),x,2.9,z);
+  mesh(new THREE.BoxGeometry(1.15,.28,1.15),PM(0x554739),x,5.75,z);
+  mesh(new THREE.BoxGeometry(1.15,.28,1.15),PM(0x554739),x,.14,z);
+  const bracketZ=z+side*.55;
+  mesh(new THREE.CylinderGeometry(.05,.07,.7,6),PM(0x2a1d12),x,3.1,bracketZ);
+  const flame=new THREE.PointLight(0xffaa44,1.5,9);
+  flame.position.set(x,3.5,bracketZ);scene.add(flame);
+  torchLights.push({light:flame,phase:Math.random()*10});
+  mesh(new THREE.SphereGeometry(.13,8,8),new THREE.MeshBasicMaterial({color:0xffcc66}),x,3.5,bracketZ);
 }
-function drawColumn(x){
-  const bx=x-camX;if(bx<-60||bx>W+60)return;
-  const top=H*.05,w=56,h=H*.72;
-  const g=ctx.createLinearGradient(bx-w/2,0,bx+w/2,0);
-  g.addColorStop(0,'#2a2018');g.addColorStop(.5,'#5a4a38');g.addColorStop(1,'#20180f');
-  ctx.fillStyle=g;ctx.fillRect(bx-w/2,top,w,h);
-  ctx.fillStyle='#4a3e30';ctx.fillRect(bx-w/2-10,top-16,w+20,18);
-  ctx.fillStyle='#4a3e30';ctx.fillRect(bx-w/2-10,top+h,w+20,18);
-  // tocha presa na coluna
-  const ty=top+h*.28;
-  ctx.fillStyle='#2a1d12';ctx.fillRect(bx-5,ty,10,34);
-  const flick=Math.sin(t*9+x)*.15+Math.sin(t*23+x)*.08;
-  const r=22+flick*10;
-  const rg=ctx.createRadialGradient(bx,ty-14,2,bx,ty-14,r);
-  rg.addColorStop(0,'rgba(255,220,140,.95)');rg.addColorStop(.5,'rgba(255,140,40,.55)');rg.addColorStop(1,'rgba(255,90,20,0)');
-  ctx.fillStyle=rg;ctx.beginPath();ctx.arc(bx,ty-14,r,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#ffcf4d';
-  ctx.beginPath();ctx.moveTo(bx,ty-30-flick*4);ctx.quadraticCurveTo(bx+9,ty-16,bx,ty-4);ctx.quadraticCurveTo(bx-9,ty-16,bx,ty-30-flick*4);ctx.fill();
-  ctx.fillStyle='#ff6a1a';
-  ctx.beginPath();ctx.moveTo(bx,ty-22-flick*3);ctx.quadraticCurveTo(bx+5,ty-14,bx,ty-6);ctx.quadraticCurveTo(bx-5,ty-14,bx,ty-22-flick*3);ctx.fill();
+columns.forEach(px=>{makeColumnTorch(px,-1);makeColumnTorch(px,1)});
+
+/* mesas com cadeiras */
+function makeTableSet(px){
+  const x=wx(px),z=0;
+  const wood=PM(0x4a3626),top=PM(0x5a4230);
+  [[-1.1,-.6],[-1.1,.6],[1.1,-.6],[1.1,.6]].forEach(l=>mesh(new THREE.CylinderGeometry(.06,.06,1,8),wood,x+l[0],.5,z+l[1]));
+  mesh(new THREE.CylinderGeometry(1.3,1.3,.12,16),top,x,1.05,z);
+  [-1.8,1.8].forEach(cx=>{
+    mesh(new THREE.BoxGeometry(.6,.55,.6),wood,x+cx,.28,z);
+    mesh(new THREE.BoxGeometry(.6,.65,.08),wood,x+cx,.6,z+(cx>0?.28:-.28));
+  });
+  mesh(new THREE.CylinderGeometry(.16,.2,.28,10),PM(0x8a8a92,{metalness:.3}),x-.4,1.25,z);
+  mesh(new THREE.TorusGeometry(.18,.06,8,12),PM(0xcaa24a,{metalness:.5,roughness:.3}),x+.5,1.2,z);
 }
-function drawChain(pf){
-  const bx=pf.x-camX,cx1=bx+pf.w*.22,cx2=bx+pf.w*.78,topY=pf.anchorY;
-  ctx.strokeStyle='#8a8a92';ctx.lineWidth=5;
-  [cx1,cx2].forEach(cx=>{
-    for(let y=topY;y<pf.y;y+=18){
-      ctx.beginPath();ctx.ellipse(cx,y,6,9,0,0,Math.PI*2);ctx.stroke();
+tableSets.forEach(ts=>makeTableSet(ts.x));
+
+/* quadros na parede */
+function makePortrait(px){
+  const x=wx(px),side=px%800<400?-1:1,z=WALL_Z*side-side*.1;
+  const tex=texFromCanvas((c,w,h)=>{
+    const g=c.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,'#3a4a6a');g.addColorStop(1,'#1a2438');
+    c.fillStyle='#8a6a2a';c.fillRect(0,0,w,h);
+    c.fillStyle=g;c.fillRect(w*.08,h*.08,w*.84,h*.84);
+    c.fillStyle='#5a4a3a';c.beginPath();c.moveTo(w*.2,h*.7);c.lineTo(w*.45,h*.35);c.lineTo(w*.65,h*.55);c.lineTo(w*.8,h*.3);c.lineTo(w*.85,h*.72);c.closePath();c.fill();
+    c.fillStyle='#e8c98a';c.beginPath();c.arc(w*.72,h*.22,w*.08,0,Math.PI*2);c.fill();
+  },128,160);
+  mesh(new THREE.PlaneGeometry(1.3,1.6),new THREE.MeshBasicMaterial({map:tex}),x,3.9,z).rotation.y=side>0?Math.PI:0;
+}
+portraits.forEach(p=>makePortrait(p.x));
+
+/* vasos de flores */
+function makeVase(px,side){
+  const x=wx(px),z=1.7*side;
+  mesh(new THREE.CylinderGeometry(.18,.24,.5,10),PM(0x8a5a3a),x,.25,z);
+  const colors=[0xdd5577,0xffcf4d,0xffffff,0xaa66dd];
+  for(let i=0;i<5;i++){
+    const ang=i/5*Math.PI*2;
+    mesh(new THREE.SphereGeometry(.13,8,8),PM(colors[i%colors.length],{roughness:.6}),x+Math.cos(ang)*.14,.65+seededRand(px+i)*.12,z+Math.sin(ang)*.14);
+  }
+  mesh(new THREE.CylinderGeometry(.03,.03,.5,6),PM(0x3a5a2a),x,.5,z);
+}
+vases.forEach(v=>makeVase(v.x,v.side));
+
+/* plataformas seguradas por correntes, com moedas em cima */
+function makeChainPlatform(pf){
+  const x=wx(pf.x)+wx(pf.w)/2,y=wy(pf.y);
+  mesh(new THREE.BoxGeometry(wx(pf.w),.35,2.2),PM(0x4a3d33),x,y-.18,0);
+  [-wx(pf.w)*.3,wx(pf.w)*.3].forEach(dx=>{
+    for(let cy=CEIL;cy>y;cy-=.3){
+      mesh(new THREE.TorusGeometry(.08,.025,6,8),PM(0x8a8a92,{metalness:.6,roughness:.4}),x+dx,cy,0);
     }
   });
 }
-function drawPlatform(pf){
-  const bx=pf.x-camX;
-  if(pf.chain)drawChain(pf);
-  ctx.fillStyle='#4a3d33';
-  ctx.fillRect(bx,pf.y,pf.w,pf.h);
-  ctx.fillStyle='#6b5a4a';
-  ctx.fillRect(bx,pf.y,pf.w,6);
-  ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=2;
-  for(let x=0;x<pf.w;x+=40)ctx.strokeRect(bx+x,pf.y,Math.min(40,pf.w-x),pf.h);
-}
-function drawCoin(c){
-  if(c.got)return;
-  const x=c.x-camX;if(x<-40||x>W+40)return;
-  const bob=Math.sin(t*3+c.x)*4;
-  const sq=Math.abs(Math.sin(t*2+c.x*.3))*10+6;
-  ctx.fillStyle='#ffcf4d';
-  ctx.beginPath();ctx.ellipse(x,c.y+bob,sq,12,0,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#e8a92a';
-  ctx.beginPath();ctx.ellipse(x,c.y+bob,sq*.55,6,0,0,Math.PI*2);ctx.fill();
-}
-function drawGoal(){
-  const x=goal.x-camX;
-  ctx.fillStyle='#3a2a1a';ctx.fillRect(x-8,goal.y-10,goal.w+16,goal.h+20);
-  ctx.fillStyle='#caa24a';
-  ctx.beginPath();ctx.moveTo(x+goal.w/2-14,goal.y+10);ctx.lineTo(x+goal.w/2-14,goal.y+2);ctx.lineTo(x+goal.w/2-7,goal.y+10);ctx.lineTo(x+goal.w/2,goal.y);ctx.lineTo(x+goal.w/2+7,goal.y+10);ctx.lineTo(x+goal.w/2+14,goal.y+2);ctx.lineTo(x+goal.w/2+14,goal.y+10);ctx.closePath();ctx.fill();
-  ctx.fillStyle='#8a1414';ctx.fillRect(x+8,goal.y+16,goal.w-16,goal.h-16);
-  ctx.strokeStyle='#caa24a';ctx.lineWidth=3;ctx.strokeRect(x+8,goal.y+16,goal.w-16,goal.h-16);
-}
-function drawPlayer(){
-  if(P.inv>0&&Math.floor(t*14)%2===0)return;
-  const x=P.x-camX,y=P.y,flip=P.dir<0;
-  ctx.save();
-  if(flip){ctx.translate(x+P.w,y);ctx.scale(-1,1);}else{ctx.translate(x,y);}
-  // pernas (bota preta)
-  ctx.fillStyle='#161616';
-  ctx.fillRect(2,34,10,16);ctx.fillRect(18,34,10,16);
-  // corpo: roupa preta de caçador de recompensas
-  ctx.fillStyle='#1a1a1c';
-  ctx.fillRect(3,14,24,24);
-  // detalhes prateados de armadura no peito
-  ctx.fillStyle='#c7ccd6';
-  ctx.fillRect(6,17,18,5);
-  ctx.fillRect(6,25,7,5);ctx.fillRect(17,25,7,5);
-  // ombreiras prateadas
-  ctx.fillStyle='#9aa0ac';
-  ctx.fillRect(0,13,8,9);ctx.fillRect(22,13,8,9);
-  // cinto
-  ctx.fillStyle='#c7ccd6';ctx.fillRect(3,33,24,4);
-  // braços
-  ctx.fillStyle='#1a1a1c';ctx.fillRect(-3,17,6,18);ctx.fillRect(27,17,6,18);
-  // cabeça (pele)
-  ctx.fillStyle='#e8b98a';ctx.fillRect(6,0,18,15);
-  // cabelo vermelho espetado
-  ctx.fillStyle='#c1341a';
-  ctx.beginPath();
-  ctx.moveTo(4,3);ctx.lineTo(8,-8);ctx.lineTo(10,2);
-  ctx.lineTo(13,-11);ctx.lineTo(15,1);
-  ctx.lineTo(18,-9);ctx.lineTo(20,2);
-  ctx.lineTo(24,-6);ctx.lineTo(26,4);
-  ctx.closePath();ctx.fill();
-  // olhos
-  ctx.fillStyle='#1a1410';ctx.fillRect(17,6,4,4);
-  ctx.restore();
-}
-function draw(){
-  drawBackground();
-  for(const c of columns)drawColumn(c.x);
-  for(const pf of platforms)drawPlatform(pf);
-  for(const c of coins)drawCoin(c);
-  drawGoal();
-  drawPlayer();
-}
+platforms.forEach(pf=>{if(pf.chain)makeChainPlatform(pf)});
 
+const coinMeshes=[];
+function makeCoinMesh(c){
+  const g=mesh(new THREE.CylinderGeometry(.22,.22,.06,16),PM(0xffcf4d,{metalness:.6,roughness:.3,emissive:0x664400,emissiveIntensity:.3}),wx(c.x),wy(c.y),0);
+  coinMeshes.push({c,mesh:g});
+}
+coins.forEach(makeCoinMesh);
+
+/* porta do castelo (meta) */
+function makeGoal(px){
+  const x=wx(px);
+  mesh(new THREE.BoxGeometry(2.4,4,.4),PM(0x3a2a1a),x,2,0);
+  mesh(new THREE.BoxGeometry(1.6,3,.2),PM(0x8a1414),x,1.5,.25);
+  const crown=mesh(new THREE.ConeGeometry(.3,.4,4),PM(0xcaa24a,{metalness:.5,roughness:.4}),x,3.6,.2);
+  crown.rotation.y=Math.PI/4;
+}
+makeGoal(goal.x);
+
+/* personagem: caçador de recompensas, formas arredondadas (nada quadrado) */
+const player3d=new THREE.Group();
+const armor=PM(0x17171a,{roughness:.6,metalness:.2});
+const silver=PM(0xb9c0cc,{roughness:.35,metalness:.6});
+const skin=PM(0xe8b98a,{roughness:.8});
+const hairMat=PM(0xc1341a,{roughness:.6});
+
+const legL=mesh(new THREE.CylinderGeometry(.11,.15,.7,10),armor,-.16,.35,0);
+const legR=mesh(new THREE.CylinderGeometry(.11,.15,.7,10),armor,.16,.35,0);
+player3d.add(legL,legR);
+const torso=new THREE.Mesh(new THREE.CylinderGeometry(.32,.38,.85,14),armor);torso.position.y=1.15;player3d.add(torso);
+const chest=new THREE.Mesh(new THREE.CylinderGeometry(.34,.36,.4,14,1,false,-.6,1.2),silver);chest.position.set(0,1.32,.03);player3d.add(chest);
+const belt=new THREE.Mesh(new THREE.TorusGeometry(.33,.06,8,16),silver);belt.rotation.x=Math.PI/2;belt.position.y=.78;player3d.add(belt);
+const shoL=new THREE.Mesh(new THREE.SphereGeometry(.18,10,10),silver);shoL.scale.set(1,.8,1);shoL.position.set(-.38,1.48,0);player3d.add(shoL);
+const shoR=new THREE.Mesh(new THREE.SphereGeometry(.18,10,10),silver);shoR.scale.set(1,.8,1);shoR.position.set(.38,1.48,0);player3d.add(shoR);
+const armL=new THREE.Mesh(new THREE.CylinderGeometry(.1,.11,.65,10),armor);armL.position.set(-.4,1.1,0);player3d.add(armL);
+const armR=new THREE.Mesh(new THREE.CylinderGeometry(.1,.11,.65,10),armor);armR.position.set(.4,1.1,0);player3d.add(armR);
+const wristL=new THREE.Mesh(new THREE.CylinderGeometry(.115,.115,.12,10),silver);wristL.position.set(-.4,.82,0);player3d.add(wristL);
+const wristR=new THREE.Mesh(new THREE.CylinderGeometry(.115,.115,.12,10),silver);wristR.position.set(.4,.82,0);player3d.add(wristR);
+const head=new THREE.Mesh(new THREE.SphereGeometry(.24,16,16),skin);head.position.y=1.82;player3d.add(head);
+const eyeL=new THREE.Mesh(new THREE.SphereGeometry(.025,6,6),PM(0x1a1410));eyeL.position.set(-.09,1.83,.21);player3d.add(eyeL);
+const eyeR=new THREE.Mesh(new THREE.SphereGeometry(.025,6,6),PM(0x1a1410));eyeR.position.set(.09,1.83,.21);player3d.add(eyeR);
+// cabelo vermelho espetado (vários cones ao redor do topo da cabeça)
+for(let i=0;i<8;i++){
+  const ang=i/8*Math.PI*2;
+  const spike=new THREE.Mesh(new THREE.ConeGeometry(.055,.32,6),hairMat);
+  spike.position.set(Math.cos(ang)*.14,2.02+seededRand(i)*.06,Math.sin(ang)*.14);
+  spike.rotation.set(Math.cos(ang)*.5,0,-Math.sin(ang)*.5);
+  player3d.add(spike);
+}
+scene.add(player3d);
+
+/* ===== loop principal ===== */
 let last=performance.now();
 function frame(now){
   requestAnimationFrame(frame);
   const dt=Math.min(.033,(now-last)/1000);last=now;
-  update(dt);draw();
+  update(dt);
+
+  player3d.position.set(wx(P.x),wy(P.y+P.h),0);
+  player3d.scale.x=P.dir>=0?1:-1;
+  player3d.visible=!(P.inv>0&&Math.floor(t*14)%2===0);
+
+  for(const cm of coinMeshes){
+    cm.mesh.visible=!cm.c.got;
+    if(!cm.c.got){cm.mesh.rotation.y=t*3;cm.mesh.position.y=wy(cm.c.y)+Math.sin(t*3+cm.c.x)*.06}
+  }
+
+  for(const tl of torchLights){
+    tl.light.intensity=1.4*(1+Math.sin(t*9+tl.phase)*.18+Math.sin(t*23+tl.phase)*.08+(Math.random()-.5)*.06);
+  }
+
+  const camWX=wx(camX);
+  camera.position.set(camWX+2.2,3,7.3);
+  camera.lookAt(camWX+2.2,1.1,0);
+
+  renderer.render(scene,camera);
 }
+showMsg('🗡️ Caçador de Recompensas','Toque ou aperte ESPAÇO para começar — pegue as moedas e não caia!');
 requestAnimationFrame(frame);
 })();
 </script>
