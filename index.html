@@ -29,6 +29,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #hud{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 10px) calc(env(safe-area-inset-right,0px) + 12px) 0 calc(env(safe-area-inset-left,0px) + 12px);display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:5}
 #hearts{font-size:clamp(26px,5vw,40px);line-height:1;text-shadow:0 2px 4px rgba(0,0,0,.4);letter-spacing:.05em}
 .h{color:#000;opacity:.35}.h.on{color:var(--heart);opacity:1}
+#coinc{color:#fff;font-weight:800;font-size:clamp(15px,3vw,22px);text-shadow:0 2px 4px rgba(0,0,0,.4)}
 #lvinfo{text-align:center;color:#fff;text-shadow:0 2px 5px rgba(0,0,0,.6);font-size:clamp(13px,2.2vw,18px);min-width:34vw}
 .bar{height:8px;border-radius:6px;background:rgba(0,0,0,.35);margin-top:4px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ffe066,#ff9f1c)}
@@ -79,7 +80,10 @@ body.touch.ingame #touch{display:block}
 <canvas id="c"></canvas>
 
 <div id="hud" class="off">
-  <div id="hearts"></div>
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <div id="hearts"></div>
+    <div id="coinc">🪙 0</div>
+  </div>
   <div id="lvinfo"><b id="lvname"></b><div class="bar"><i id="bar"></i></div></div>
   <div style="display:flex;gap:8px;pointer-events:auto">
     <button class="btn" id="qbtn" style="padding:.4em .6em" aria-label="Trocar poder">🔄</button>
@@ -131,6 +135,8 @@ body.touch.ingame #touch{display:block}
       <li><b>🐒 Macacos:</b> jogam banana em você. Use a tecla <b>X</b> para atirar estrelas e derrotá-los. Macacos fracos têm 15% de vida e os fortes 20%.</li>
       <li>Derrote macacos para ganhar fragmentos ✨ e desbloquear o poder do vento (<b>C</b>). Use <b>Q</b> para trocar o poder em destaque.</li>
       <li>Os poderes têm uma barrinha de energia: espere ela encher um pouco para usar de novo.</li>
+      <li><b>❓ Blocos de interrogação:</b> pule por baixo deles para ganhar moedas 🪙.</li>
+      <li><b>🧱 Degraus de tijolo:</b> servem para subir nas partes mais altas do caminho.</li>
     </ul>
     <button class="btn" id="bBack">Voltar</button>
   </div>
@@ -197,7 +203,9 @@ const SFX={
   starShot(){tone(700,.14,'sine',.16,'sf',1400)},
   wind(){tone(240,.4,'sine',.15,'sf',480);tone(180,.4,'triangle',.1,'sf',90,.05)},
   monkeyHit(){tone(320,.12,'square',.18,'sf',120)},
-  frag(){tone(900,.1,'triangle',.18,'sf',1400);tone(1200,.15,'sine',.15,'sf',1800,.08)}
+  frag(){tone(900,.1,'triangle',.18,'sf',1400);tone(1200,.15,'sine',.15,'sf',1800,.08)},
+  coin(){tone(988,.09,'square',.2,'sf',1500);tone(1500,.12,'square',.14,'sf',1975,.05)},
+  bump(){tone(140,.08,'square',.15,'sf',80)}
 };
 let musT=null,musNext=0,musStep=0,musSeed=0;
 const PENT=[0,2,4,7,9,12,14];
@@ -379,7 +387,7 @@ function genLevel(i){
   const L=LEVELS[i],d=L.d,rnd=mulberry(9001+i*131),R=(a,b)=>a+(b-a)*rnd();
   const lv={solids:[],movers:[],elevs:[],zones:[],portal:null,end:0,L,idx:i};
   let x=0,y=0,zx=0,zb=0;
-  const G=(len,top)=>{const t=top===undefined?y:top;lv.solids.push({x0:x,x1:x+len,y0:t-40,y1:t,k:'g'});x+=len};
+  const G=(len,top,kind)=>{const t=top===undefined?y:top;lv.solids.push({x0:x,x1:x+len,y0:t-40,y1:t,k:kind||'g'});x+=len};
   const plat=(a,b,t)=>lv.solids.push({x0:a,x1:b,y0:t-1.6,y1:t,k:'p'});
   const ceil=(a,b,bt)=>lv.solids.push({x0:a,x1:b,y0:bt,y1:bt+6,k:'c'});
   const closeZone=()=>{lv.zones.push({x0:zx,x1:x,base:zb});zx=x};
@@ -387,9 +395,10 @@ function genLevel(i){
   function pF(len){const s=x;while(x-s<len){
     G(R(12,22)*(1-.3*d));
     const k=Math.floor(R(2,4.99)),hs=[];
-    for(let j=0;j<k;j++){const h=R(.6,1.3+.6*d);y+=h;hs.push(h);G(R(6,9-3*d))}
+    // degraus de tijolo, servem para subir
+    for(let j=0;j<k;j++){const h=R(.6,1.3+.6*d);y+=h;hs.push(h);G(R(6,9-3*d),undefined,'b')}
     G(R(6,10)*(1-.3*d));
-    for(let j=k-1;j>=0;j--){y-=hs[j];G(R(6,9-3*d))}
+    for(let j=k-1;j>=0;j--){y-=hs[j];G(R(6,9-3*d),undefined,'b')}
   }}
   // P = pulos entre plataformas
   function pP(len){const s=x;while(x-s<len){
@@ -451,6 +460,18 @@ function genLevel(i){
       }
     }
   }
+  // Blocos de interrogação: flutuam sobre o chão e dão moeda quando batidos por baixo
+  lv.qblocks=[];
+  {
+    const qr=mulberry(7000+i*53);
+    for(const s of lv.solids.slice()){
+      if(s.k==='g'&&(s.x1-s.x0)>10&&s.x0>14&&qr()<.18){
+        const qx=s.x0+(s.x1-s.x0)*(.4+qr()*.3),qy=s.y1+3.4+qr()*1.5;
+        const qb={x0:qx-.9,x1:qx+.9,y0:qy-.9,y1:qy+.9,k:'q',used:false,mesh:null,bumpT:0};
+        lv.solids.push(qb);lv.qblocks.push(qb);
+      }
+    }
+  }
   lv.bk=new Map();
   for(const s of lv.solids){for(let b=Math.floor(s.x0/BS);b<=Math.floor(s.x1/BS);b++){let a=lv.bk.get(b);if(!a){a=[];lv.bk.set(b,a)}a.push(s)}}
   return lv;
@@ -460,6 +481,36 @@ function genLevel(i){
 let LV=null,lvGroup=null,envGroup=null,fxGroup=null,mats=null,portalG=null;
 const shadowBlob=new THREE.Mesh(new THREE.CircleGeometry(1,20),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.28,depthWrite:false}));
 shadowBlob.rotation.x=-Math.PI/2;gameScene.add(shadowBlob);
+let _brickTex,_qTex,_qUsedTex;
+function brickTexture(){
+  if(_brickTex)return _brickTex;
+  const cv=document.createElement('canvas');cv.width=64;cv.height=64;const x=cv.getContext('2d');
+  x.fillStyle='#b5502e';x.fillRect(0,0,64,64);
+  x.strokeStyle='#7a3419';x.lineWidth=3;
+  for(let row=0;row<4;row++){
+    const oy=row*16,off=row%2?16:0;
+    x.beginPath();x.moveTo(0,oy);x.lineTo(64,oy);x.stroke();
+    for(let col=-1;col<5;col++){const bx=col*16+off;x.beginPath();x.moveTo(bx,oy);x.lineTo(bx,oy+16);x.stroke()}
+  }
+  _brickTex=new THREE.CanvasTexture(cv);_brickTex.wrapS=_brickTex.wrapT=THREE.RepeatWrapping;
+  return _brickTex;
+}
+function qmarkTexture(){
+  if(_qTex)return _qTex;
+  const cv=document.createElement('canvas');cv.width=cv.height=128;const x=cv.getContext('2d');
+  x.fillStyle='#e8a83c';x.fillRect(0,0,128,128);
+  x.strokeStyle='#8a5a12';x.lineWidth=6;x.strokeRect(6,6,116,116);
+  x.fillStyle='#fff8e0';x.font='bold 84px sans-serif';x.textAlign='center';x.textBaseline='middle';
+  x.fillText('?',64,70);
+  _qTex=new THREE.CanvasTexture(cv);return _qTex;
+}
+function qmarkUsedTexture(){
+  if(_qUsedTex)return _qUsedTex;
+  const cv=document.createElement('canvas');cv.width=cv.height=128;const x=cv.getContext('2d');
+  x.fillStyle='#8a6a45';x.fillRect(0,0,128,128);
+  x.strokeStyle='#5c4527';x.lineWidth=6;x.strokeRect(6,6,116,116);
+  _qUsedTex=new THREE.CanvasTexture(cv);return _qUsedTex;
+}
 function skyTexture(p){
   const cv=document.createElement('canvas');cv.width=4;cv.height=256;const x=cv.getContext('2d');
   const g=x.createLinearGradient(0,0,0,256);g.addColorStop(0,p.t);g.addColorStop(1,p.b);x.fillStyle=g;x.fillRect(0,0,4,256);
@@ -473,7 +524,8 @@ function buildEnv(i){
   const gc=new THREE.Color(p.g);
   mats={dirt:PM(p.d),grass:PM(p.g),plat:PM(p.p),platTop:PM(new THREE.Color(p.p).offsetHSL(0,0,.12)),ceil:PM(new THREE.Color(p.d).offsetHSL(0,-.05,-.12)),
     trunk:PM(0x7a5236),crown:PM(gc.clone().offsetHSL(0,0,-.1)),crown2:PM(gc.clone().offsetHSL(.03,0,-.02)),
-    elev:PM(0xffb703,{emissive:new THREE.Color(0x553300)}),post:PM(0xffffff,{transparent:true,opacity:.55})};
+    elev:PM(0xffb703,{emissive:new THREE.Color(0x553300)}),post:PM(0xffffff,{transparent:true,opacity:.55}),
+    brick:PM(0xffffff,{map:brickTexture()}),qmark:PM(0xffffff,{map:qmarkTexture()})};
   const rr=mulberry(i*17+3);
   // colinas
   envGroup.hills=[];
@@ -544,9 +596,18 @@ function makeSolidMesh(s){
       }
       for(let j=0;j<Math.floor(w/14);j++){const bx=s.x0+r()*w;g.add(mesh(SPH,mats.crown2,bx,s.y1+.25,2.6+r()*.9,.6+r()*.3,.4,.5))}
     }
+  }else if(s.k==='b'){
+    const tex=mats.brick.map.clone();tex.repeat.set(Math.max(1,w/2),Math.max(1,h/2));tex.needsUpdate=true;
+    const bm=mats.brick.clone();bm.map=tex;
+    g.add(mesh(BOX,bm,cx,(s.y0+s.y1)/2,0,w,h,dep));
   }else if(s.k==='p'){
     g.add(mesh(BOX,mats.plat,cx,(s.y0+s.y1)/2,0,w,h,7));
     g.add(mesh(BOX,mats.platTop,cx,s.y1-.1,0,w+.1,.3,7.1));
+  }else if(s.k==='q'){
+    const qm=mats.qmark.clone();
+    if(s.used){qm.map=qmarkUsedTexture()}
+    const box=mesh(BOX,qm,cx,(s.y0+s.y1)/2,0,w,h,w);
+    g.add(box);g.userData={box,mat:qm};
   }else{
     g.add(mesh(BOX,mats.ceil,cx,(s.y0+s.y1)/2,0,w,h,dep));
     g.add(mesh(BOX,mats.plat,cx,s.y0+.1,0,w+.05,.3,dep+.1));
@@ -629,6 +690,31 @@ const SPEED=7.2,GRAV=34,JUMP=13.6,HW=.62,H_ST=3,H_CR=2;
 
 /* ================= PODERES / MACACOS / PÁSSAROS: estado ================= */
 let bananas=[],stars=[],birds=[],birdTimer=6,alertTimer=0;
+let coins=0,coinsFX=[];
+function makeCoinMesh(){
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.08,16),PM(0xffd23f,{emissive:new THREE.Color(0x553d00),shininess:90}));
+  m.rotation.x=Math.PI/2;return m;
+}
+function spawnCoinPop(x,y){
+  const m=makeCoinMesh();m.position.set(x,y,0);fxGroup.add(m);
+  coinsFX.push({x,y,t:0,mesh:m});
+  coins++;$('coinc').textContent='🪙 '+coins;SFX.coin();
+}
+function updateCoinsFX(dt){
+  for(let i=coinsFX.length-1;i>=0;i--){
+    const c=coinsFX[i];c.t+=dt;c.y+=dt*3.2;
+    if(c.mesh){c.mesh.position.y=c.y;c.mesh.rotation.z+=dt*10}
+    if(c.t>.6){if(c.mesh)fxGroup.remove(c.mesh);coinsFX.splice(i,1)}
+  }
+}
+function updateQBlocks(dt){
+  for(const q of LV.qblocks){
+    if(q.bumpT>0){
+      q.bumpT-=dt;
+      if(q.m)q.m.position.y=(q.y0+q.y1)/2+Math.sin(Math.min(1,q.bumpT/.22)*Math.PI)*.35;
+    }
+  }
+}
 const powers={
   fragments:0,fragGoal:6,equipped:'star',
   star:{unlocked:true,energy:1,max:1,regen:1/9,cost:.34,dmg:8},
@@ -850,7 +936,7 @@ function zoneBase(x){for(const z of LV.zones)if(x>=z.x0&&x<=z.x1)return z.base;r
 function step(dt){
   gt+=dt;
   updateMovers();updateElevs(dt);
-  if(state==='playing'){updateMonkeys(dt);updateBananas(dt);updateStars(dt);updateBirds(dt);updatePowers(dt)}
+  if(state==='playing'){updateMonkeys(dt);updateBananas(dt);updateStars(dt);updateBirds(dt);updatePowers(dt);updateQBlocks(dt);updateCoinsFX(dt)}
   const I=readInput();
   if(state==='enter'){enterT+=dt;if(enterT>1.15)beginTunnel()}
   if(P.inv>0)P.inv-=dt;
@@ -887,7 +973,14 @@ function step(dt){
   for(const c of near(P.x)){
     if(ovl(c,P.x,P.y,P.h)){
       if(P.vy<=0&&oy>=c.y1-.7){P.y=c.y1;P.vy=0;P.ground=true;P.gobj=c}
-      else if(P.vy>0){P.y=c.y0-P.h;P.vy=0}
+      else if(P.vy>0){
+        P.y=c.y0-P.h;P.vy=0;
+        if(c.k==='q'&&!c.used){
+          c.used=true;c.bumpT=.22;SFX.bump();
+          spawnCoinPop((c.x0+c.x1)/2,c.y1+.6);
+          if(c.m&&c.m.userData){c.m.userData.mat.map=qmarkUsedTexture();c.m.userData.mat.needsUpdate=true}
+        }
+      }
     }
   }
   if(P.ground&&!wasG&&pvy<-9)SFX.land();
@@ -914,7 +1007,7 @@ function loseLife(){
 /* ================= FLUXO: FASES E PORTAL ================= */
 function loadLevel(i){
   lvIdx=i;LV=genLevel(i);buildEnv(i);
-  bananas=[];stars=[];birds=[];birdTimer=6+Math.random()*4;alertTimer=0;$('warn').classList.add('off');
+  bananas=[];stars=[];birds=[];coinsFX=[];birdTimer=6+Math.random()*4;alertTimer=0;$('warn').classList.add('off');
   updateMovers();for(const m of LV.movers){m.dx=m.dy=0}
   P={x:6,y:.02,vx:0,vy:0,dir:1,ground:false,gobj:null,crouch:false,h:H_ST,coy:0,maxX:6,safe:{x:6,y:.02},inv:0};
   gt=0;enterT=0;camFace=1;camX=6+5.5;camY=3;
@@ -1024,7 +1117,7 @@ function renderTitle(dt,t){
 }
 function pick(i){auInit();SFX.click();startGame(kinds[i])}
 function startGame(kind){
-  pc=makeChar(kind);lives=3;
+  pc=makeChar(kind);lives=3;coins=0;$('coinc').textContent='🪙 0';
   powers.fragments=0;powers.equipped='star';powers.star.unlocked=true;powers.star.energy=1;powers.wind.unlocked=false;powers.wind.energy=1;
   $('fragc').textContent='✨ 0/'+powers.fragGoal;
   document.querySelectorAll('.pwr').forEach(e=>e.classList.toggle('eq',e.dataset.k==='star'));
