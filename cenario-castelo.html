@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Cenário de Castelo Medieval</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{height:100%;margin:0;overflow:hidden;background:#0a0808;font-family:"Trebuchet MS",system-ui,sans-serif}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#tag{position:fixed;left:14px;bottom:14px;color:#fff3d4;font-weight:800;font-size:clamp(13px,2.2vw,18px);text-shadow:0 2px 4px rgba(0,0,0,.7);opacity:.8}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="tag">🏰 Corredor do Castelo Medieval</div>
+<script>
+(function(){
+'use strict';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W=0,H=0;
+function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight}
+addEventListener('resize',resize);resize();
+
+/* ===== paleta escura, ambiente medieval ===== */
+function drawFloorAndWalls(){
+  // chão de pedra
+  ctx.fillStyle='#2a221c';
+  ctx.fillRect(0,H*.62,W,H*.38);
+  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;
+  const fbw=W/10;
+  for(let i=0;i<=10;i++){
+    ctx.beginPath();ctx.moveTo(i*fbw,H*.62);ctx.lineTo(i*fbw,H);ctx.stroke();
+  }
+  for(let y=H*.62;y<H;y+=(H-H*.62)/6)ctx.beginPath(),ctx.moveTo(0,y),ctx.lineTo(W,y),ctx.stroke();
+
+  // teto escuro
+  const cg=ctx.createLinearGradient(0,0,0,H*.18);
+  cg.addColorStop(0,'#0c0906');cg.addColorStop(1,'#1c1610');
+  ctx.fillStyle=cg;ctx.fillRect(0,0,W,H*.18);
+
+  // parede de fundo (perspectiva do corredor)
+  const wallTop=H*.18,wallBot=H*.62;
+  const wg=ctx.createLinearGradient(0,wallTop,0,wallBot);
+  wg.addColorStop(0,'#241d17');wg.addColorStop(1,'#1a140f');
+  ctx.fillStyle=wg;ctx.fillRect(W*.28,wallTop,W*.44,wallBot-wallTop);
+  drawBrickPattern(W*.28,wallTop,W*.44,wallBot-wallTop,54,34,'rgba(0,0,0,.4)');
+
+  // paredes laterais (perspectiva)
+  ctx.fillStyle='#211a14';
+  ctx.beginPath();ctx.moveTo(0,H*.14);ctx.lineTo(W*.28,wallTop);ctx.lineTo(W*.28,wallBot);ctx.lineTo(0,H*.68);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(W,H*.14);ctx.lineTo(W*.72,wallTop);ctx.lineTo(W*.72,wallBot);ctx.lineTo(W,H*.68);ctx.closePath();ctx.fill();
+  drawBrickPatternSkew(0,H*.14,W*.28,wallTop,W*.28,wallBot,0,H*.68,'rgba(0,0,0,.35)');
+  drawBrickPatternSkew(W,H*.14,W*.72,wallTop,W*.72,wallBot,W,H*.68,'rgba(0,0,0,.35)');
+}
+function drawBrickPattern(x,y,w,h,bw,bh,color){
+  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+  ctx.strokeStyle=color;ctx.lineWidth=2;
+  for(let row=0;row*bh<h;row++){
+    const oy=y+row*bh,off=row%2?bw/2:0;
+    ctx.beginPath();ctx.moveTo(x,oy);ctx.lineTo(x+w,oy);ctx.stroke();
+    for(let bx=x-bw+off;bx<x+w+bw;bx+=bw){ctx.beginPath();ctx.moveTo(bx,oy);ctx.lineTo(bx,oy+bh);ctx.stroke()}
+  }
+  ctx.restore();
+}
+function drawBrickPatternSkew(x0,y0,x1,y1,x2,y2,x3,y3,color){
+  // aproximação simples: linhas horizontais entre os dois lados do trapézio
+  ctx.save();
+  ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.lineTo(x2,y2);ctx.lineTo(x3,y3);ctx.closePath();ctx.clip();
+  ctx.strokeStyle=color;ctx.lineWidth=2;
+  const rows=8;
+  for(let i=0;i<=rows;i++){
+    const t=i/rows;
+    const ax=x0+(x1-x0)*t,ay=y0+(y1-y0)*t;
+    const bx=x3+(x2-x3)*t,by=y3+(y2-y3)*t;
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ===== janelas com luar ===== */
+function drawWindow(cx,cy,w,h){
+  ctx.save();
+  ctx.translate(cx,cy);
+  // moldura de pedra
+  ctx.fillStyle='#3a3026';
+  ctx.beginPath();
+  ctx.moveTo(-w/2-10,h/2);ctx.lineTo(-w/2-10,-h/2+18);
+  ctx.quadraticCurveTo(-w/2-10,-h/2-16,0,-h/2-16);
+  ctx.quadraticCurveTo(w/2+10,-h/2-16,w/2+10,-h/2+18);
+  ctx.lineTo(w/2+10,h/2);ctx.closePath();ctx.fill();
+  // vidro / luar
+  const g=ctx.createLinearGradient(0,-h/2,0,h/2);
+  g.addColorStop(0,'#3a4a6a');g.addColorStop(1,'#1a2438');
+  ctx.fillStyle=g;
+  ctx.beginPath();
+  ctx.moveTo(-w/2,h/2);ctx.lineTo(-w/2,-h/2+14);
+  ctx.quadraticCurveTo(-w/2,-h/2-8,0,-h/2-8);
+  ctx.quadraticCurveTo(w/2,-h/2-8,w/2,-h/2+14);
+  ctx.lineTo(w/2,h/2);ctx.closePath();ctx.fill();
+  // lua
+  ctx.fillStyle='rgba(255,250,220,.85)';
+  ctx.beginPath();ctx.arc(w*.18,-h*.22,w*.14,0,Math.PI*2);ctx.fill();
+  // travessas
+  ctx.strokeStyle='#2a221a';ctx.lineWidth=5;
+  ctx.beginPath();ctx.moveTo(0,-h/2-8);ctx.lineTo(0,h/2);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-w/2,0);ctx.lineTo(w/2,0);ctx.stroke();
+  ctx.restore();
+}
+
+/* ===== tocha ===== */
+function drawTorch(x,y,t){
+  const flick=5+Math.sin(t*9+x)*2.5+Math.random()*1.5;
+  const glow=ctx.createRadialGradient(x,y,0,x,y,60+flick);
+  glow.addColorStop(0,'rgba(255,170,60,.45)');glow.addColorStop(1,'rgba(255,170,60,0)');
+  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(x,y,60+flick,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#4a3a2a';ctx.fillRect(x-4,y,8,26);
+  ctx.fillStyle='#ffcf4d';
+  ctx.beginPath();ctx.ellipse(x,y-5-flick*.3,6,10+flick*.5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ff6b2e';
+  ctx.beginPath();ctx.ellipse(x,y-3-flick*.2,3.5,6+flick*.3,0,0,Math.PI*2);ctx.fill();
+}
+
+/* ===== tapete vermelho no corredor ===== */
+function drawCarpet(){
+  ctx.fillStyle='#7a1a1a';
+  ctx.beginPath();
+  ctx.moveTo(W*.46,H*.62);ctx.lineTo(W*.54,H*.62);ctx.lineTo(W*.82,H);ctx.lineTo(W*.18,H);ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle='#ffcf4d';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(W*.465,H*.62);ctx.lineTo(W*.2,H);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(W*.535,H*.62);ctx.lineTo(W*.8,H);ctx.stroke();
+}
+
+/* ===== mesa com cadeiras ao fundo ===== */
+function drawTableSet(x,y,scale,side){
+  ctx.save();ctx.translate(x,y);ctx.scale(scale*side,scale);
+  // cadeiras
+  ctx.fillStyle='#3a2a1a';
+  ctx.fillRect(-46,-8,16,26);ctx.fillRect(-46,-28,16,22);
+  ctx.fillRect(30,-8,16,26);ctx.fillRect(30,-28,16,22);
+  // mesa
+  ctx.fillStyle='#5a4230';
+  ctx.fillRect(-34,-14,68,10);
+  ctx.fillStyle='#4a3626';
+  ctx.fillRect(-28,-4,8,20);ctx.fillRect(20,-4,8,20);
+  // jarra/objetos em cima
+  ctx.fillStyle='#8a8a92';
+  ctx.beginPath();ctx.arc(-6,-20,6,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#caa24a';
+  ctx.fillRect(8,-22,10,10);
+  ctx.restore();
+}
+
+/* ===== corpo caído estilizado (sem grafismo pesado) ===== */
+function drawFallenBody(x,y,scale,flip){
+  ctx.save();ctx.translate(x,y);ctx.scale(scale*(flip?-1:1),scale);
+  // mancha escura no chão (sugestão de sangue, discreta)
+  ctx.fillStyle='rgba(90,10,10,.55)';
+  ctx.beginPath();ctx.ellipse(6,4,34,12,0,0,Math.PI*2);ctx.fill();
+  // corpo (silhueta simples, capa/armadura)
+  ctx.fillStyle='#3a3630';
+  ctx.beginPath();
+  ctx.ellipse(0,0,30,9,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(-26,-1,9,7,0,0,Math.PI*2);ctx.fill(); // cabeça
+  ctx.fillStyle='#5a4230';
+  ctx.fillRect(-4,-6,26,5); // braço caído
+  ctx.restore();
+}
+
+let t0=performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const t=(now-t0)/1000;
+  ctx.clearRect(0,0,W,H);
+  drawFloorAndWalls();
+  drawCarpet();
+  // janelas nas paredes laterais
+  drawWindow(W*.12,H*.32,W*.09,H*.16);
+  drawWindow(W*.88,H*.32,W*.09,H*.16);
+  drawWindow(W*.5,H*.3,W*.1,H*.17);
+  // mesas com cadeiras nos dois lados, ao fundo
+  drawTableSet(W*.20,H*.58,Math.min(1.3,W/1000),1);
+  drawTableSet(W*.80,H*.58,Math.min(1.3,W/1000),-1);
+  drawTableSet(W*.335,H*.66,Math.min(1.5,W/900),1);
+  drawTableSet(W*.665,H*.66,Math.min(1.5,W/900),-1);
+  // tochas na parede
+  drawTorch(W*.30,H*.38,t);drawTorch(W*.70,H*.38,t);
+  drawTorch(W*.05,H*.5,t);drawTorch(W*.95,H*.5,t);
+  // corpos caídos no corredor (estilizados, discretos)
+  drawFallenBody(W*.42,H*.86,Math.min(1.6,W/900),false);
+  drawFallenBody(W*.62,H*.93,Math.min(1.7,W/900),true);
+  // vinheta escura nas bordas
+  const vg=ctx.createRadialGradient(W/2,H*.55,H*.2,W/2,H*.55,H*.85);
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.55)');
+  ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
