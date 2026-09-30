@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Jogo de Plataformas</title>
+<style>
+:root{--ink:#fff3d4;--btn:#ffcf4d;--btn-ink:#3a2412}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{height:100%;margin:0;overflow:hidden;background:#0d1b2a;font-family:"Trebuchet MS",system-ui,sans-serif;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{position:fixed;left:0;right:0;top:0;padding:14px;display:flex;justify-content:space-between;color:#fff;font-weight:800;font-size:clamp(16px,3vw,24px);text-shadow:0 2px 4px rgba(0,0,0,.5);pointer-events:none;z-index:5}
+#msg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);color:#fff;font-weight:800;font-size:clamp(20px,5vw,40px);text-align:center;text-shadow:0 3px 8px rgba(0,0,0,.6);z-index:10}
+#msg.off{display:none}
+#msg span{display:block;font-size:.5em;font-weight:700;margin-top:10px}
+#touch{display:none;position:fixed;inset:0;pointer-events:none;z-index:6}
+body.touch #touch{display:block}
+.pad{position:absolute;left:14px;bottom:14px;display:grid;grid-template-columns:70px 70px;grid-template-rows:70px;gap:8px}
+.pad button,#jbtn{pointer-events:auto;border:3px solid rgba(255,255,255,.85);background:rgba(255,207,77,.55);color:#3a2412;font-weight:800;font-size:28px;border-radius:18px;touch-action:none}
+.pad button:active,#jbtn:active{background:rgba(255,160,40,.9)}
+#jbtn{position:fixed;right:18px;bottom:24px;width:100px;height:100px;border-radius:50%;font-size:18px;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="lv">Fase 1</div>
+  <div id="lives">❤️❤️❤️</div>
+</div>
+<div id="msg" class="off"><div id="msgTxt"></div><span id="msgSub"></span></div>
+<div id="touch">
+  <div class="pad">
+    <button id="bl">←</button>
+    <button id="br">→</button>
+  </div>
+  <button id="jbtn">PULAR</button>
+</div>
+
+<script>
+(function(){
+'use strict';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let W=0,H=0;
+function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight}
+addEventListener('resize',resize);resize();
+if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
+
+/* ===== mundo da fase 1 ===== */
+const GRAV=1500,JUMP=-620,SPEED=280,GROUND_Y=620;
+// plataformas: {x,y,w,h, float:{amp,speed,phase} opcional}
+const platforms=[
+  {x:0,y:GROUND_Y,w:500,h:200}, // chão inicial
+  {x:650,y:GROUND_Y-120,w:160,h:24,float:{amp:40,speed:1.1,phase:0}},
+  {x:900,y:GROUND_Y-230,w:150,h:24,float:{amp:55,speed:.9,phase:1.4}},
+  {x:1150,y:GROUND_Y-90,w:140,h:24,float:{amp:30,speed:1.4,phase:2.6}},
+  {x:1380,y:GROUND_Y-260,w:160,h:24,float:{amp:60,speed:1,phase:.6}},
+  {x:1650,y:GROUND_Y,w:420,h:200}, // chão intermediário
+  {x:2160,y:GROUND_Y-150,w:150,h:24,float:{amp:45,speed:1.2,phase:3}},
+  {x:2400,y:GROUND_Y-280,w:150,h:24,float:{amp:35,speed:.8,phase:1.9}},
+  {x:2650,y:GROUND_Y-140,w:150,h:24,float:{amp:50,speed:1.05,phase:.3}},
+  {x:2900,y:GROUND_Y,w:500,h:200}, // chão final
+];
+// espinhos: {x,y,w,h} — tocar tira 1 vida
+const spikes=[
+  {x:530,y:GROUND_Y-30,w:90,h:30},
+  {x:1700,y:GROUND_Y-30,w:70,h:30},
+  {x:1850,y:GROUND_Y-30,w:70,h:30},
+  {x:2960,y:GROUND_Y-30,w:80,h:30},
+];
+const goal={x:3250,y:GROUND_Y-120,w:60,h:120};
+const LEVEL_END=3400;
+
+function floatY(p,t){
+  if(!p.float)return p.y;
+  return p.y+Math.sin(t*p.float.speed+p.float.phase)*p.float.amp;
+}
+
+/* ===== estado ===== */
+let state='title',lives=3,camX=0,t=0,keys={},touchL=0,touchR=0,jumpBuf=0;
+let P={x:60,y:GROUND_Y-70,vx:0,vy:0,w:34,h:50,onGround:false,coy:0,inv:0,dir:1};
+function resetPlayer(){P.x=60;P.y=GROUND_Y-70;P.vx=0;P.vy=0;P.onGround=false;P.coy=0;P.inv=1;camX=0}
+function setLives(){$('lives').textContent='❤️'.repeat(Math.max(0,lives))+'🖤'.repeat(Math.max(0,3-lives))}
+
+function showMsg(txt,sub){$('msgTxt').textContent=txt;$('msgSub').textContent=sub||'';$('msg').classList.remove('off')}
+function hideMsg(){$('msg').classList.add('off')}
+
+function start(){
+  lives=3;setLives();resetPlayer();state='playing';hideMsg();
+}
+showMsg('🎮 Jogo de Plataformas','Toque ou aperte ESPAÇO para começar — Fase 1: plataformas voadoras e espinhos!');
+addEventListener('keydown',e=>{
+  if(state==='title'&&(e.code==='Space'||e.code==='Enter')){start();return}
+  if(state==='over'&&(e.code==='Space'||e.code==='Enter')){start();return}
+  if(state==='win'&&(e.code==='Space'||e.code==='Enter')){start();return}
+  keys[e.code]=true;
+  if(!e.repeat&&(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'))jumpBuf=.12;
+});
+addEventListener('keyup',e=>{keys[e.code]=false});
+cv.addEventListener('pointerdown',()=>{
+  if(state==='title'||state==='over'||state==='win')start();
+});
+$('bl').addEventListener('pointerdown',e=>{e.preventDefault();touchL=1});
+$('br').addEventListener('pointerdown',e=>{e.preventDefault();touchR=1});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>{
+  $('bl').addEventListener(ev,()=>touchL=0);
+  $('br').addEventListener(ev,()=>touchR=0);
+});
+$('jbtn').addEventListener('pointerdown',e=>{e.preventDefault();jumpBuf=.12});
+
+function rectsOverlap(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+
+function update(dt){
+  t+=dt;
+  if(state!=='playing')return;
+  if(jumpBuf>0)jumpBuf-=dt;
+  if(P.inv>0)P.inv-=dt;
+  const left=keys.ArrowLeft||keys.KeyA||touchL,right=keys.ArrowRight||keys.KeyD||touchR;
+  const ax=(right?1:0)-(left?1:0);
+  if(ax)P.dir=ax;
+  const want=ax*SPEED;
+  const acc=P.onGround?2600:1400;
+  if(P.vx<want)P.vx=Math.min(want,P.vx+acc*dt);else if(P.vx>want)P.vx=Math.max(want,P.vx-acc*dt);
+  P.x+=P.vx*dt;
+  P.x=Math.max(P.x,10);
+  if(P.onGround)P.coy=.1;else P.coy-=dt;
+  if(jumpBuf>0&&P.coy>0){P.vy=JUMP;P.onGround=false;P.coy=0;jumpBuf=0}
+  P.vy+=GRAV*dt;
+  const oy=P.y;
+  P.y+=P.vy*dt;
+  P.onGround=false;
+  for(const pf of platforms){
+    const py=floatY(pf,t);
+    const box={x:pf.x,y:py,w:pf.w,h:pf.h};
+    if(P.x+P.w>box.x&&P.x<box.x+box.w){
+      if(P.vy>=0&&oy+P.h<=box.y+10&&P.y+P.h>=box.y){
+        P.y=box.y-P.h;P.vy=0;P.onGround=true;
+      }
+    }
+  }
+  // espinhos
+  if(P.inv<=0){
+    const pb={x:P.x,y:P.y,w:P.w,h:P.h};
+    for(const sp of spikes){
+      if(rectsOverlap(pb,sp)){
+        lives--;setLives();P.inv=1.2;P.vy=-420;P.vx=-P.dir*180;
+        if(lives<=0){state='over';showMsg('💥 Fim de jogo','Toque ou aperte ESPAÇO para tentar de novo')}
+        break;
+      }
+    }
+  }
+  // caiu no vazio
+  if(P.y>H+200){
+    lives--;setLives();
+    if(lives<=0){state='over';showMsg('💥 Fim de jogo','Toque ou aperte ESPAÇO para tentar de novo')}
+    else{resetPlayer();P.inv=1.2}
+  }
+  // chegou na meta
+  const pb={x:P.x,y:P.y,w:P.w,h:P.h};
+  if(rectsOverlap(pb,goal)){
+    state='win';showMsg('🏆 Fase 1 completa!','Toque ou aperte ESPAÇO para jogar de novo');
+  }
+  // câmera segue o jogador
+  const targetCam=Math.max(0,Math.min(LEVEL_END-W+80,P.x-W*.4));
+  camX+=(targetCam-camX)*Math.min(1,dt*4);
+}
+
+/* ===== desenho ===== */
+function drawBackground(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#3aa0ee');g.addColorStop(1,'#bfe8ff');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // nuvens (parallax lento)
+  ctx.fillStyle='rgba(255,255,255,.85)';
+  for(let i=0;i<8;i++){
+    const bx=((i*260-camX*.3)%(W+300)+W+300)%(W+300)-150;
+    const by=60+((i*57)%140);
+    for(let k=0;k<3;k++)ctx.beginPath(),ctx.arc(bx+k*26,by+Math.sin(k)*6,26,0,Math.PI*2),ctx.fill();
+  }
+}
+function drawPlatform(pf){
+  const py=floatY(pf,t)-camX*0+ (pf.float?0:0);
+  const y=floatY(pf,t);
+  const isFloating=!!pf.float;
+  ctx.fillStyle=isFloating?'#8a6a45':'#6b4a2e';
+  ctx.fillRect(pf.x-camX,y,pf.w,pf.h);
+  ctx.fillStyle=isFloating?'#7ed957':'#5fcf54';
+  ctx.fillRect(pf.x-camX,y-8,pf.w,10);
+  if(isFloating){
+    // corrente/nuvem decorativa embaixo pra parecer "voadora"
+    ctx.fillStyle='rgba(255,255,255,.7)';
+    ctx.beginPath();ctx.ellipse(pf.x-camX+pf.w/2,y+pf.h+10,pf.w*.35,10,0,0,Math.PI*2);ctx.fill();
+  }
+}
+function drawSpike(sp){
+  ctx.fillStyle='#b5502e';
+  const n=Math.max(1,Math.round(sp.w/28));
+  const sw=sp.w/n;
+  for(let i=0;i<n;i++){
+    const bx=sp.x-camX+i*sw;
+    ctx.beginPath();
+    ctx.moveTo(bx,sp.y+sp.h);
+    ctx.lineTo(bx+sw/2,sp.y);
+    ctx.lineTo(bx+sw,sp.y+sp.h);
+    ctx.closePath();ctx.fill();
+  }
+}
+function drawGoal(){
+  ctx.fillStyle='#8a5a1c';
+  ctx.fillRect(goal.x-camX,goal.y,8,goal.h);
+  ctx.fillStyle='#ffcf3a';
+  ctx.beginPath();
+  ctx.moveTo(goal.x-camX+8,goal.y);
+  ctx.lineTo(goal.x-camX+8+goal.w-8,goal.y+16);
+  ctx.lineTo(goal.x-camX+8,goal.y+32);
+  ctx.closePath();ctx.fill();
+}
+function drawPlayer(){
+  if(P.inv>0&&Math.floor(t*14)%2===0)return;
+  const x=P.x-camX,y=P.y;
+  ctx.fillStyle='#ffb84d';
+  ctx.fillRect(x,y,P.w,P.h);
+  ctx.fillStyle='#3a2412';
+  const eyeX=P.dir>0?x+P.w-11:x+5;
+  ctx.fillRect(eyeX,y+10,6,6);
+}
+function draw(){
+  drawBackground();
+  for(const pf of platforms)drawPlatform(pf);
+  for(const sp of spikes)drawSpike(sp);
+  drawGoal();
+  drawPlayer();
+}
+
+let last=performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.033,(now-last)/1000);last=now;
+  update(dt);draw();
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
