@@ -70,6 +70,14 @@ const columns=[100,460,900,1350,1780,2200,2600,2950];
 const windowXs=[280,750,1230,1900,2380,2820];
 const portraits=[560,1100,1550,2050,2500];
 const goal={x:LEVEL_END,y:GROUND_Y-150,w:70,h:150};
+// zumbis que aparecem aleatoriamente pelo mapa (somem e reaparecem em outro lugar)
+const ZCOUNT=4;
+const zombies=Array.from({length:ZCOUNT},()=>({active:false,x:0,y:GROUND_Y,w:26,h:44,pMin:0,pMax:0,dir:1,spd:1,hitT:0,timer:1+Math.random()*3,activeT:0}));
+function spawnZombie(z){
+  const x=220+Math.random()*(LEVEL_END-320);
+  z.x=x;z.pMin=Math.max(40,x-90);z.pMax=x+90;z.dir=Math.random()<.5?1:-1;
+  z.spd=.6+Math.random()*.6;z.active=true;z.activeT=5+Math.random()*7;z.hitT=0;
+}
 
 /* ===== estado ===== */
 let state='title',lives=3,camX=0,t=0,keys={},touchL=0,touchR=0,jumpBuf=0;
@@ -78,7 +86,11 @@ function resetPlayer(){P.x=60;P.y=GROUND_Y-70;P.vx=0;P.vy=0;P.onGround=false;P.c
 function setLives(){$('lives').textContent='❤️'.repeat(Math.max(0,lives))+'🖤'.repeat(Math.max(0,3-lives))}
 function showMsg(txt,sub){$('msgTxt').textContent=txt;$('msgSub').textContent=sub||'';$('msg').classList.remove('off')}
 function hideMsg(){$('msg').classList.add('off')}
-function start(){lives=3;setLives();resetPlayer();state='playing';hideMsg()}
+function start(){
+  lives=3;setLives();resetPlayer();
+  zombies.forEach(z=>{z.active=false;z.timer=1+Math.random()*3});
+  state='playing';hideMsg();
+}
 showMsg('🏰 Castelo Pixel Art','Toque ou aperte ESPAÇO para começar!');
 addEventListener('keydown',e=>{
   if((state==='title'||state==='over'||state==='win')&&(e.code==='Space'||e.code==='Enter')){start();return}
@@ -123,6 +135,29 @@ function update(dt){
       }
     }
   }
+  // zumbis: aparecem e somem aleatoriamente pelo mapa
+  for(const z of zombies){
+    if(!z.active){
+      z.timer-=dt;
+      if(z.timer<=0)spawnZombie(z);
+      continue;
+    }
+    z.activeT-=dt;
+    if(z.activeT<=0){z.active=false;z.timer=2+Math.random()*5;continue}
+    if(z.hitT>0)z.hitT-=dt;
+    z.x+=z.dir*40*z.spd*dt;
+    if(z.x<=z.pMin){z.x=z.pMin;z.dir=1}else if(z.x>=z.pMax){z.x=z.pMax;z.dir=-1}
+    const zb={x:z.x-z.w/2,y:z.y-z.h,w:z.w,h:z.h};
+    const pbz={x:P.x,y:P.y,w:P.w,h:P.h};
+    if(rectsOverlap(pbz,zb)){
+      if(P.vy>0&&P.y+P.h-8<zb.y+14){
+        z.active=false;z.timer=2+Math.random()*5;P.vy=JUMP*.6;P.inv=.3;
+      }else if(P.inv<=0){
+        lives--;setLives();P.inv=1.2;P.vy=-380;P.vx=-P.dir*160;
+        if(lives<=0){state='over';showMsg('🧟 Você foi pego pelos zumbis','Toque ou aperte ESPAÇO para tentar de novo')}
+      }
+    }
+  }
   if(P.y>H*PIX+3000){
     lives--;setLives();
     if(lives<=0){state='over';showMsg('💀 Você caiu no vazio','Toque ou aperte ESPAÇO para tentar de novo')}
@@ -139,17 +174,32 @@ function update(dt){
 /* ===== desenho (em resolução baixa = pixel art) ===== */
 const px=v=>Math.round(v/PIX);
 function drawBackground(){
-  octx.fillStyle='#241a14';octx.fillRect(0,0,OW,OH);
-  // parede de pedra em blocos
-  const bw=18,bh=12;
-  for(let row=0;row*bh<OH*.7+bh;row++){
+  const g=octx.createLinearGradient(0,0,0,OH);
+  g.addColorStop(0,'#2e211a');g.addColorStop(1,'#1a1108');
+  octx.fillStyle=g;octx.fillRect(0,0,OW,OH);
+  // parede de pedra em blocos, com variação e musgo/rachaduras
+  const bw=18,bh=12,wallBottom=OH*.62;
+  for(let row=0;row*bh<wallBottom+bh;row++){
     const off2=row%2?bw/2:0;
     for(let x=-bw+((px(camX*.3))%bw)*-1+off2;x<OW+bw;x+=bw){
-      octx.fillStyle=(row+Math.floor(x/bw))%2===0?'#453325':'#3a2a1e';
+      const seed=Math.abs(Math.sin((x*3+row*7)*12.9898))%1;
+      octx.fillStyle=seed<.15?'#4f3d2c':(row+Math.floor(x/bw))%2===0?'#453325':'#3a2a1e';
       octx.fillRect(x,row*bh,bw-1,bh-1);
       octx.fillStyle='rgba(0,0,0,.35)';octx.fillRect(x,row*bh+bh-2,bw-1,2);
+      if(seed>.9){octx.fillStyle='#3a5a2e';octx.fillRect(x+3,row*bh+bh-4,4,3)} // musgo
+      if(seed>.8&&seed<=.9){octx.fillStyle='rgba(0,0,0,.4)';octx.fillRect(x+bw*.4,row*bh+2,1,bh-4)} // rachadura
     }
   }
+  // chão de pedra, visualmente distinto da parede
+  octx.fillStyle='#665344';octx.fillRect(0,wallBottom,OW,OH-wallBottom);
+  for(let x=-bw+((px(camX*.3))%bw)*-1;x<OW+bw;x+=bw){
+    octx.fillStyle='rgba(0,0,0,.3)';octx.fillRect(x,wallBottom,1,OH-wallBottom);
+  }
+  octx.fillStyle='rgba(0,0,0,.4)';octx.fillRect(0,wallBottom,OW,2);
+  // vinheta leve pras bordas (atmosfera)
+  const vg=octx.createRadialGradient(OW/2,OH*.4,OH*.2,OW/2,OH*.4,OW*.7);
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.45)');
+  octx.fillStyle=vg;octx.fillRect(0,0,OW,OH);
 }
 function drawColumnTorch(x){
   const bx=px(x-camX);if(bx<-20||bx>OW+20)return;
@@ -231,6 +281,24 @@ function drawGoal(){
   octx.fillStyle='#8a1414';octx.fillRect(bx+3,by+6,bw-6,bh-6);
   octx.fillStyle='#caa24a';octx.fillRect(bx+bw/2-3,by-2,6,6);
 }
+function drawZombie(z){
+  if(!z.active)return;
+  const bx=px(z.x-camX),by=px(z.y);
+  const flip=z.dir<0;
+  const w=px(z.w),h=px(z.h);
+  octx.save();
+  if(flip){octx.translate(bx+w/2,by);octx.scale(-1,1);}else{octx.translate(bx-w/2,by);}
+  const jolt=z.hitT>0?(Math.sin(z.hitT*40)*2):0;
+  octx.translate(jolt,0);
+  const walk=Math.floor(t*6+z.x)%2;
+  octx.fillStyle='#2e3a22';octx.fillRect(3,-h*.4,5,h*.4+walk); // perna
+  octx.fillStyle='#2e3a22';octx.fillRect(w-8,-h*.4,5,h*.4+(1-walk));
+  octx.fillStyle='#4a5a34';octx.fillRect(1,-h*.82,w-2,h*.42); // torso
+  octx.fillStyle='#5c6e42';octx.fillRect(w*.15,-h,w*.7,h*.22); // cabeça
+  octx.fillStyle='#120e0a';octx.fillRect(w*.28,-h*.9,3,3);octx.fillRect(w*.54,-h*.9,3,3); // olhos
+  octx.fillStyle='#4a5a34';octx.fillRect(-3,-h*.76,4,h*.3);octx.fillRect(w-1,-h*.76,4,h*.3); // braços caídos
+  octx.restore();
+}
 function drawPlayer(){
   if(P.inv>0&&Math.floor(t*14)%2===0)return;
   const bx=px(P.x-camX),by=px(P.y),flip=P.dir<0;
@@ -238,15 +306,25 @@ function drawPlayer(){
   octx.save();
   if(flip){octx.translate(bx+w,by);octx.scale(-1,1);}else{octx.translate(bx,by);}
   const walk=P.onGround&&Math.abs(P.vx)>10?Math.floor(t*8)%2:0;
-  // capa preta (mais larga embaixo)
+  const flutter=Math.sin(t*5)*1.5;
+  // botas por baixo da capa
+  octx.fillStyle='#1c1a18';
+  octx.fillRect(2,h-6,6,6);octx.fillRect(w-8,h-6,6,6);
+  // capa preta (mais larga embaixo, balançando)
   octx.fillStyle='#0c0c0e';
-  octx.fillRect(1,4,w-2,h-8);
-  octx.fillRect(-1,h-10,w+2,8+walk);
+  octx.fillRect(1,4,w-2,h-10);
+  octx.beginPath();
+  octx.moveTo(-2,h-12);octx.lineTo(w+2,h-12);
+  octx.lineTo(w+3+flutter,h+2);octx.lineTo(w*.5,h-4);octx.lineTo(-3-flutter,h+2);
+  octx.closePath();octx.fill();
+  octx.fillStyle='#161618';octx.fillRect(1,4,w-2,3); // sombra sutil no topo da capa
   // capuz
   octx.fillStyle='#0c0c0e';
-  octx.fillRect(2,-2,w-4,8);
-  octx.fillStyle='#050506';octx.fillRect(3,1,w-6,5); // sombra dentro do capuz
-  // olhos vermelhos brilhando
+  octx.fillRect(2,-2,w-4,9);
+  octx.fillStyle='#050506';octx.fillRect(3,1,w-6,6); // sombra dentro do capuz
+  // olhos vermelhos brilhando (com leve halo)
+  octx.fillStyle='rgba(255,20,20,.35)';
+  octx.fillRect(w*.32-1,2,4,4);octx.fillRect(w*.58-1,2,4,4);
   octx.fillStyle='#ff1a1a';
   octx.fillRect(w*.32,3,2,2);
   octx.fillRect(w*.58,3,2,2);
@@ -258,6 +336,7 @@ function draw(){
   for(const p of portraits)drawPortrait(p);
   for(const c of columns)drawColumnTorch(c);
   for(const pf of platforms)drawPlatform(pf);
+  for(const z of zombies)drawZombie(z);
   drawGoal();
   drawPlayer();
 }
