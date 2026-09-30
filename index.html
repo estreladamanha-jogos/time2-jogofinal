@@ -445,8 +445,9 @@ function genLevel(i){
     const mr=mulberry(5000+i*97);
     for(const s of lv.solids){
       if(s.k==='g'&&(s.x1-s.x0)>9&&s.x0>10&&mr()<.22){
-        const strong=mr()<.4,mx=s.x0+(s.x1-s.x0)*(.3+mr()*.4);
-        lv.monkeys.push({x:mx,y:s.y1,hp:strong?20:15,maxHp:strong?20:15,strong,alive:true,cd:1+mr()*2.4,hitT:0,mesh:null});
+        const strong=mr()<.4,pad=1.2,pMin=s.x0+pad,pMax=s.x1-pad,mx=clamp(s.x0+(s.x1-s.x0)*(.3+mr()*.4),pMin,pMax);
+        lv.monkeys.push({x:mx,y:s.y1,hp:strong?20:15,maxHp:strong?20:15,strong,alive:true,cd:1+mr()*2.4,hitT:0,mesh:null,
+          patrolMin:pMin,patrolMax:pMax,spd:1.4+mr()*1.6,dir:mr()<.5?1:-1});
       }
     }
   }
@@ -605,6 +606,7 @@ function streamMonkeys(cx){
     if(m.mesh){
       m.mesh.position.set(m.x,m.y,0);
       const jolt=m.hitT>0?Math.sin(m.hitT*50)*.12:0;m.mesh.rotation.z=jolt;
+      m.mesh.rotation.y=m.dir<0?Math.PI:0;
       m.mesh.userData.bar.scale.x=Math.max(.02,m.hp/m.maxHp);
     }
   }
@@ -680,6 +682,10 @@ function updateMonkeys(dt){
   for(const m of LV.monkeys){
     if(!m.alive)continue;
     if(m.hitT>0)m.hitT-=dt;
+    // anda e volta em linha reta dentro do próprio trecho de chão
+    m.x+=m.dir*m.spd*dt;
+    if(m.x<=m.patrolMin){m.x=m.patrolMin;m.dir=1}
+    else if(m.x>=m.patrolMax){m.x=m.patrolMax;m.dir=-1}
     if(Math.abs(m.x-P.x)<1&&P.inv<=0)hitPlayer();
     if(Math.abs(m.x-P.x)>28)continue;
     m.cd-=dt;
