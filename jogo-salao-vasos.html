@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Salão do Castelo</title>
+<style>
+:root{--ink:#fff3d4;--btn:#ffcf4d;--btn-ink:#3a2412}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{height:100%;margin:0;overflow:hidden;background:#0d0906;font-family:"Trebuchet MS",system-ui,sans-serif;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{position:fixed;left:0;right:0;top:0;padding:14px;display:flex;justify-content:space-between;color:#fff;font-weight:800;font-size:clamp(16px,3vw,24px);text-shadow:0 2px 4px rgba(0,0,0,.6);pointer-events:none;z-index:5}
+#msg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);color:#fff;font-weight:800;font-size:clamp(20px,5vw,40px);text-align:center;text-shadow:0 3px 8px rgba(0,0,0,.7);z-index:10}
+#msg.off{display:none}
+#msg span{display:block;font-size:.5em;font-weight:700;margin-top:10px}
+#touch{display:none;position:fixed;inset:0;pointer-events:none;z-index:6}
+body.touch #touch{display:block}
+.pad{position:absolute;left:14px;bottom:14px;display:grid;grid-template-columns:70px 70px;grid-template-rows:70px;gap:8px}
+.pad button,#jbtn{pointer-events:auto;border:3px solid rgba(255,255,255,.7);background:rgba(120,30,30,.55);color:#fff3d4;font-weight:800;font-size:28px;border-radius:18px;touch-action:none}
+.pad button:active,#jbtn:active{background:rgba(160,40,40,.9)}
+#jbtn{position:fixed;right:18px;bottom:24px;width:100px;height:100px;border-radius:50%;font-size:18px;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="lv">Fase 1 · Salão do Castelo</div>
+  <div id="score">🪙 0</div>
+  <div id="lives">❤️❤️❤️</div>
+</div>
+<div id="msg" class="off"><div id="msgTxt"></div><span id="msgSub"></span></div>
+<div id="touch">
+  <div class="pad">
+    <button id="bl">←</button>
+    <button id="br">→</button>
+  </div>
+  <button id="jbtn">PULAR</button>
+</div>
+
+<script>
+(function(){
+'use strict';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let W=0,H=0;
+function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight}
+addEventListener('resize',resize);resize();
+if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
+
+/* ===== mundo da fase 1: salão do castelo ===== */
+const GRAV=1500,JUMP=-620,SPEED=270,GROUND_Y=620;
+const LEVEL_END=3000;
+const platforms=[{x:0,y:GROUND_Y,w:LEVEL_END+400,h:200,ground:true}];
+// colunas de pedra com iluminação medieval (tochas)
+const columns=[160,560,980,1400,1820,2240,2660,3050];
+// mesas com cadeiras (decoração ao fundo)
+const tableSets=[350,1100,1900,2600].map(x=>({x}));
+// vasos que quebram quando o jogador bate neles e soltam moedas
+const vases=[260,480,760,1030,1340,1660,1980,2320,2540,2860].map(x=>({x,y:GROUND_Y,broken:false,shardT:0}));
+let coins=[];
+let score=0;
+const goal={x:LEVEL_END,y:GROUND_Y-150,w:70,h:150};
+
+/* ===== estado ===== */
+let state='title',lives=3,camX=0,t=0,keys={},touchL=0,touchR=0,jumpBuf=0;
+let P={x:60,y:GROUND_Y-70,vx:0,vy:0,w:30,h:50,onGround:false,coy:0,inv:0,dir:1};
+function resetPlayer(){P.x=60;P.y=GROUND_Y-70;P.vx=0;P.vy=0;P.onGround=false;P.coy=0;P.inv=1;camX=0}
+function setLives(){$('lives').textContent='❤️'.repeat(Math.max(0,lives))+'🖤'.repeat(Math.max(0,3-lives))}
+function setScore(){$('score').textContent='🪙 '+score}
+function showMsg(txt,sub){$('msgTxt').textContent=txt;$('msgSub').textContent=sub||'';$('msg').classList.remove('off')}
+function hideMsg(){$('msg').classList.add('off')}
+function start(){
+  lives=3;score=0;setLives();setScore();resetPlayer();
+  vases.forEach(v=>{v.broken=false;v.shardT=0});
+  coins=[];
+  state='playing';hideMsg();
+}
+showMsg('🏰 Salão do Castelo','Toque ou aperte ESPAÇO para começar — quebre os vasos e pegue as moedas!');
+addEventListener('keydown',e=>{
+  if((state==='title'||state==='over'||state==='win')&&(e.code==='Space'||e.code==='Enter')){start();return}
+  keys[e.code]=true;
+  if(!e.repeat&&(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'))jumpBuf=.12;
+});
+addEventListener('keyup',e=>{keys[e.code]=false});
+cv.addEventListener('pointerdown',()=>{if(state==='title'||state==='over'||state==='win')start()});
+$('bl').addEventListener('pointerdown',e=>{e.preventDefault();touchL=1});
+$('br').addEventListener('pointerdown',e=>{e.preventDefault();touchR=1});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>{
+  $('bl').addEventListener(ev,()=>touchL=0);
+  $('br').addEventListener(ev,()=>touchR=0);
+});
+$('jbtn').addEventListener('pointerdown',e=>{e.preventDefault();jumpBuf=.12});
+
+function rectsOverlap(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+
+function breakVase(v){
+  v.broken=true;v.shardT=.5;
+  const n=3+Math.floor(Math.random()*2);
+  for(let i=0;i<n;i++){
+    coins.push({x:v.x+(Math.random()*20-10),y:v.y-40,vx:(Math.random()*160-80),vy:-260-Math.random()*120,got:false,onGround:false});
+  }
+}
+
+function update(dt){
+  t+=dt;
+  if(state!=='playing')return;
+  if(jumpBuf>0)jumpBuf-=dt;
+  if(P.inv>0)P.inv-=dt;
+  const left=keys.ArrowLeft||keys.KeyA||touchL,right=keys.ArrowRight||keys.KeyD||touchR;
+  const ax=(right?1:0)-(left?1:0);
+  if(ax)P.dir=ax;
+  const want=ax*SPEED;
+  const acc=P.onGround?2600:1400;
+  if(P.vx<want)P.vx=Math.min(want,P.vx+acc*dt);else if(P.vx>want)P.vx=Math.max(want,P.vx-acc*dt);
+  P.x+=P.vx*dt;
+  P.x=Math.max(P.x,10);
+  if(P.onGround)P.coy=.1;else P.coy-=dt;
+  if(jumpBuf>0&&P.coy>0){P.vy=JUMP;P.onGround=false;P.coy=0;jumpBuf=0}
+  P.vy+=GRAV*dt;
+  const oy=P.y;
+  P.y+=P.vy*dt;
+  P.onGround=false;
+  for(const pf of platforms){
+    if(P.x+P.w>pf.x&&P.x<pf.x+pf.w){
+      if(P.vy>=0&&oy+P.h<=pf.y+10&&P.y+P.h>=pf.y){
+        P.y=pf.y-P.h;P.vy=0;P.onGround=true;
+      }
+    }
+  }
+  const pb={x:P.x,y:P.y,w:P.w,h:P.h};
+  // vasos: quebram quando o jogador bate neles
+  for(const v of vases){
+    if(v.broken){if(v.shardT>0)v.shardT-=dt;continue}
+    const vb={x:v.x-16,y:v.y-44,w:32,h:44};
+    if(rectsOverlap(pb,vb))breakVase(v);
+  }
+  // moedas: caem, quicam um pouco e podem ser coletadas
+  for(const c of coins){
+    if(c.got)continue;
+    c.vy+=GRAV*.7*dt;
+    c.x+=c.vx*dt;c.y+=c.vy*dt;
+    if(c.y>GROUND_Y-10){c.y=GROUND_Y-10;c.vy*=-.35;c.vx*=.6;if(Math.abs(c.vy)<40)c.onGround=true}
+    const cb={x:c.x-10,y:c.y-10,w:20,h:20};
+    if(rectsOverlap(pb,cb)){c.got=true;score++;setScore()}
+  }
+  if(P.y>H+3000){
+    lives--;setLives();
+    if(lives<=0){state='over';showMsg('💀 Você caiu no vazio','Toque ou aperte ESPAÇO para tentar de novo')}
+    else{resetPlayer();P.inv=1.2}
+  }
+  if(rectsOverlap(pb,goal)){
+    state='win';showMsg('👑 Fase 1 completa!','Moedas: '+score+' — Toque ou aperte ESPAÇO para jogar de novo');
+  }
+  const targetCam=Math.max(0,Math.min(LEVEL_END-W+90,P.x-W*.4));
+  camX+=(targetCam-camX)*Math.min(1,dt*4);
+}
+
+/* ===== desenho ===== */
+function drawBackground(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#1c1410');g.addColorStop(1,'#362519');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;
+  const bw=82,bh=56;
+  for(let row=0;row*bh<H*.68+bh;row++){
+    const off=row%2?bw/2:0;
+    for(let x=-bw+((camX*.3)%bw)*-1+off;x<W+bw;x+=bw){
+      ctx.fillStyle='rgba(255,255,255,.04)';ctx.fillRect(x+2,row*bh+2,bw-4,4);
+      ctx.strokeRect(x,row*bh,bw,bh);
+    }
+  }
+}
+function drawColumnTorch(x){
+  const bx=x-camX;if(bx<-60||bx>W+60)return;
+  const top=H*.05,w=56,h=H*.72;
+  const g=ctx.createLinearGradient(bx-w/2,0,bx+w/2,0);
+  g.addColorStop(0,'#2a2018');g.addColorStop(.5,'#5a4a38');g.addColorStop(1,'#20180f');
+  ctx.fillStyle=g;ctx.fillRect(bx-w/2,top,w,h);
+  ctx.fillStyle='#4a3e30';ctx.fillRect(bx-w/2-10,top-16,w+20,18);
+  ctx.fillStyle='#4a3e30';ctx.fillRect(bx-w/2-10,top+h,w+20,18);
+  const ty=top+h*.28;
+  ctx.fillStyle='#2a1d12';ctx.fillRect(bx-5,ty,10,34);
+  const flick=Math.sin(t*9+x)*.15+Math.sin(t*23+x)*.08;
+  const r=22+flick*10;
+  const rg=ctx.createRadialGradient(bx,ty-14,2,bx,ty-14,r);
+  rg.addColorStop(0,'rgba(255,220,140,.95)');rg.addColorStop(.5,'rgba(255,140,40,.55)');rg.addColorStop(1,'rgba(255,90,20,0)');
+  ctx.fillStyle=rg;ctx.beginPath();ctx.arc(bx,ty-14,r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ffcf4d';
+  ctx.beginPath();ctx.moveTo(bx,ty-30-flick*4);ctx.quadraticCurveTo(bx+9,ty-16,bx,ty-4);ctx.quadraticCurveTo(bx-9,ty-16,bx,ty-30-flick*4);ctx.fill();
+  ctx.fillStyle='#ff6a1a';
+  ctx.beginPath();ctx.moveTo(bx,ty-22-flick*3);ctx.quadraticCurveTo(bx+5,ty-14,bx,ty-6);ctx.quadraticCurveTo(bx-5,ty-14,bx,ty-22-flick*3);ctx.fill();
+}
+function drawFloorCarpet(){
+  ctx.fillStyle='#4a3d33';
+  ctx.fillRect(0-camX,GROUND_Y,LEVEL_END+400-camX*0,200);
+  // tapete vermelho no meio do salão
+  const cw=170;
+  ctx.fillStyle='#7a1414';
+  ctx.fillRect(-camX,GROUND_Y,LEVEL_END+400,cw);
+  ctx.strokeStyle='#ffcf4d';ctx.lineWidth=3;
+  ctx.strokeRect(-camX,GROUND_Y+2,LEVEL_END+400,cw-4);
+  for(let x=0;x<LEVEL_END+400;x+=60){
+    ctx.fillStyle='rgba(0,0,0,.12)';
+    ctx.fillRect(x-camX,GROUND_Y+8,30,cw-16);
+  }
+}
+function drawTableSet(x){
+  const bx=x-camX;if(bx<-150||bx>W+150)return;
+  const y=GROUND_Y;
+  ctx.fillStyle='#3a2a1a';
+  ctx.fillRect(bx-70,y-46,16,46);ctx.fillRect(bx-70,y-66,16,26);
+  ctx.fillRect(bx+54,y-46,16,46);ctx.fillRect(bx+54,y-66,16,26);
+  ctx.fillStyle='#5a4230';ctx.fillRect(bx-56,y-58,110,14);
+  ctx.fillStyle='#4a3626';ctx.fillRect(bx-44,y-44,10,44);ctx.fillRect(bx+34,y-44,10,44);
+  ctx.fillStyle='#8a8a92';ctx.beginPath();ctx.arc(bx-10,y-68,8,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#caa24a';ctx.fillRect(bx+10,y-72,14,14);
+}
+function drawVase(v){
+  const bx=v.x-camX;if(bx<-40||bx>W+40)return;
+  const y=v.y;
+  if(v.broken){
+    if(v.shardT<=0)return;
+    const a=v.shardT/.5;
+    ctx.globalAlpha=a;
+    ctx.fillStyle='#8a5a3a';
+    ctx.fillRect(bx-14,y-24-((.5-v.shardT)*60),6,8);
+    ctx.fillRect(bx+6,y-16-((.5-v.shardT)*50),6,8);
+    ctx.fillRect(bx-4,y-30-((.5-v.shardT)*70),8,8);
+    ctx.globalAlpha=1;
+    return;
+  }
+  ctx.fillStyle='#8a5a3a';
+  ctx.beginPath();
+  ctx.moveTo(bx-12,y);ctx.lineTo(bx-14,y-18);ctx.quadraticCurveTo(bx-18,y-34,bx-8,y-42);
+  ctx.lineTo(bx-10,y-46);ctx.lineTo(bx+10,y-46);ctx.lineTo(bx+8,y-42);
+  ctx.quadraticCurveTo(bx+18,y-34,bx+14,y-18);ctx.lineTo(bx+12,y);
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle='#caa24a';ctx.fillRect(bx-10,y-46,20,5);
+  ctx.fillStyle='rgba(255,255,255,.15)';ctx.fillRect(bx-9,y-36,4,22);
+}
+function drawCoin(c){
+  if(c.got)return;
+  const x=c.x-camX;if(x<-30||x>W+30)return;
+  ctx.fillStyle='#ffcf4d';
+  ctx.beginPath();ctx.ellipse(x,c.y,9,9,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#e8a92a';
+  ctx.beginPath();ctx.ellipse(x,c.y,5,5,0,0,Math.PI*2);ctx.fill();
+}
+function drawGoal(){
+  const x=goal.x-camX;
+  ctx.fillStyle='#3a2a1a';ctx.fillRect(x-8,goal.y-10,goal.w+16,goal.h+20);
+  ctx.fillStyle='#caa24a';
+  ctx.beginPath();ctx.moveTo(x+goal.w/2-14,goal.y+10);ctx.lineTo(x+goal.w/2-14,goal.y+2);ctx.lineTo(x+goal.w/2-7,goal.y+10);ctx.lineTo(x+goal.w/2,goal.y);ctx.lineTo(x+goal.w/2+7,goal.y+10);ctx.lineTo(x+goal.w/2+14,goal.y+2);ctx.lineTo(x+goal.w/2+14,goal.y+10);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#8a1414';ctx.fillRect(x+8,goal.y+16,goal.w-16,goal.h-16);
+  ctx.strokeStyle='#caa24a';ctx.lineWidth=3;ctx.strokeRect(x+8,goal.y+16,goal.w-16,goal.h-16);
+}
+function drawPlayer(){
+  if(P.inv>0&&Math.floor(t*14)%2===0)return;
+  const x=P.x-camX,y=P.y,flip=P.dir<0;
+  ctx.save();
+  if(flip){ctx.translate(x+P.w,y);ctx.scale(-1,1);}else{ctx.translate(x,y);}
+  ctx.fillStyle='#4a3a2a';
+  ctx.fillRect(2,34,10,16);ctx.fillRect(18,34,10,16);
+  ctx.fillStyle='#2d6a3a';
+  ctx.fillRect(3,14,24,24);
+  ctx.fillStyle='#8a5a2a';ctx.fillRect(3,33,24,4);
+  ctx.fillStyle='#2d6a3a';ctx.fillRect(-3,17,6,18);ctx.fillRect(27,17,6,18);
+  ctx.fillStyle='#e8b98a';ctx.fillRect(6,0,18,15);
+  ctx.fillStyle='#5a3a20';ctx.fillRect(4,-3,22,8);
+  ctx.fillStyle='#1a1410';ctx.fillRect(17,6,4,4);
+  ctx.restore();
+}
+function draw(){
+  drawBackground();
+  for(const ts of tableSets)drawTableSet(ts.x);
+  for(const c of columns)drawColumnTorch(c);
+  drawFloorCarpet();
+  for(const v of vases)drawVase(v);
+  for(const c of coins)drawCoin(c);
+  drawGoal();
+  drawPlayer();
+}
+
+let last=performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.033,(now-last)/1000);last=now;
+  update(dt);draw();
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
