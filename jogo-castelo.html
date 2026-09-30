@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Jogo do Castelo</title>
+<title>Jogo do Castelo 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 :root{--ink:#fff3d4;--btn:#ffcf4d;--btn-ink:#3a2412}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
@@ -24,7 +25,7 @@ body.touch #touch{display:block}
 <body>
 <canvas id="c"></canvas>
 <div id="hud">
-  <div id="lv">Fase 1 · Castelo</div>
+  <div id="lv">Fase 1 · Castelo 3D</div>
   <div id="lives">❤️❤️❤️</div>
 </div>
 <div id="msg" class="off"><div id="msgTxt"></div><span id="msgSub"></span></div>
@@ -39,38 +40,28 @@ body.touch #touch{display:block}
 <script>
 (function(){
 'use strict';
-const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const cv=document.getElementById('c');
 const $=id=>document.getElementById(id);
-let W=0,H=0;
-function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight}
-addEventListener('resize',resize);resize();
+let W=innerWidth,H=innerHeight;
 if(matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
 
-/* ===== mundo da fase 1: dentro do castelo ===== */
+/* ===== mundo da fase 1 (física em "pixels", igual antes) ===== */
 const GRAV=1500,JUMP=-620,SPEED=270,GROUND_Y=620;
 const LEVEL_END=3300;
-// plataformas de pedra (degraus simples do salão)
 const platforms=[
-  {x:0,y:GROUND_Y,w:LEVEL_END+400,h:200}, // chão contínuo do salão
+  {x:0,y:GROUND_Y,w:LEVEL_END+400,h:200},
   {x:900,y:GROUND_Y-90,w:170,h:26},
   {x:1550,y:GROUND_Y-90,w:170,h:26},
   {x:2250,y:GROUND_Y-90,w:170,h:26},
 ];
-// bandeiras vermelhas com fênix dourada, penduradas nas paredes
 const banners=[260,760,1260,1760,2260,2760,3160].map(x=>({x}));
-// quadros de reis nas paredes
 const portraits=[500,1020,1520,2020,2520,3020].map(x=>({x}));
-// mesas com cadeiras ao fundo (decoração, não colide)
 const tableSets=[150,1150,1900,2650].map(x=>({x}));
-// manchas de sangue no chão (mais manchas espalhadas)
 const bloodSpots=[380,700,1080,1480,1900,2220,2600,2980,180,560,940,1300,1680,2060,2440,2820,3100].map(x=>({x,r:18+((x*7)%26)}));
-// corpos caídos, infectados pelo zumbi (decoração, não atacam nem machucam)
 const fallenBodies=[320,860,1340,1760,2140,2520,2960].map((x,i)=>({x,flip:i%2===0}));
-// coisas caídas: móveis quebrados, pratos e taças jogadas no chão
 const debris=[240,600,960,1230,1620,2000,2380,2760,3060].map((x,i)=>({x,kind:i%3}));
-// colunas de pedra ao fundo (paralaxe = efeito de 3D falso)
-const columns=[100,500,900,1300,1700,2100,2500,2900,3300].map(x=>({x}));
-// zumbis: {x,y,patrolMin,patrolMax,spd,dir,alive,hp}
+const vases=[420,780,1080,1400,1760,2080,2400,2760,3080].map((x,i)=>({x,side:i%2===0?1:-1}));
+const windowXs=[220,720,1220,1720,2220,2720,3220];
 const zombiesData=[
   {x:480,pMin:420,pMax:640},
   {x:1000,pMin:920,pMax:1160},
@@ -81,32 +72,25 @@ const zombiesData=[
 ];
 let zombies=[];
 function resetZombies(){
-  zombies=zombiesData.map(z=>({x:z.x,y:GROUND_Y,w:34,h:52,pMin:z.pMin,pMax:z.pMax,spd:.7+Math.random()*.6,dir:Math.random()<.5?1:-1,alive:true,hitT:0}));
+  zombies=zombiesData.map((z,i)=>({x:z.x,y:GROUND_Y,w:34,h:52,pMin:z.pMin,pMax:z.pMax,spd:.7+Math.random()*.6,dir:Math.random()<.5?1:-1,alive:true,hitT:0,mesh:zombieMeshes[i]}));
 }
 const goal={x:LEVEL_END,y:GROUND_Y-150,w:70,h:150};
 
-/* ===== estado ===== */
+/* ===== estado do jogo ===== */
 let state='title',lives=3,camX=0,t=0,keys={},touchL=0,touchR=0,jumpBuf=0;
 let P={x:60,y:GROUND_Y-70,vx:0,vy:0,w:32,h:50,onGround:false,coy:0,inv:0,dir:1};
 function resetPlayer(){P.x=60;P.y=GROUND_Y-70;P.vx=0;P.vy=0;P.onGround=false;P.coy=0;P.inv=1;camX=0}
 function setLives(){$('lives').textContent='❤️'.repeat(Math.max(0,lives))+'🖤'.repeat(Math.max(0,3-lives))}
-
 function showMsg(txt,sub){$('msgTxt').textContent=txt;$('msgSub').textContent=sub||'';$('msg').classList.remove('off')}
 function hideMsg(){$('msg').classList.add('off')}
-
-function start(){
-  lives=3;setLives();resetPlayer();resetZombies();state='playing';hideMsg();
-}
-showMsg('🏰 Jogo do Castelo','Toque ou aperte ESPAÇO para começar — cuidado com os zumbis!');
+function start(){lives=3;setLives();resetPlayer();resetZombies();state='playing';hideMsg()}
 addEventListener('keydown',e=>{
   if((state==='title'||state==='over'||state==='win')&&(e.code==='Space'||e.code==='Enter')){start();return}
   keys[e.code]=true;
   if(!e.repeat&&(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'))jumpBuf=.12;
 });
 addEventListener('keyup',e=>{keys[e.code]=false});
-cv.addEventListener('pointerdown',()=>{
-  if(state==='title'||state==='over'||state==='win')start();
-});
+cv.addEventListener('pointerdown',()=>{if(state==='title'||state==='over'||state==='win')start()});
 $('bl').addEventListener('pointerdown',e=>{e.preventDefault();touchL=1});
 $('br').addEventListener('pointerdown',e=>{e.preventDefault();touchR=1});
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>{
@@ -143,7 +127,6 @@ function update(dt){
       }
     }
   }
-  // zumbis: patrulham e atacam
   for(const z of zombies){
     if(!z.alive)continue;
     if(z.hitT>0)z.hitT-=dt;
@@ -160,13 +143,11 @@ function update(dt){
       }
     }
   }
-  // caiu no vazio
-  if(P.y>H+250){
+  if(P.y>H+3000){
     lives--;setLives();
     if(lives<=0){state='over';showMsg('🧟 Você foi pego pelos zumbis','Toque ou aperte ESPAÇO para tentar de novo')}
     else{resetPlayer();P.inv=1.2}
   }
-  // chegou na meta
   const pb={x:P.x,y:P.y,w:P.w,h:P.h};
   if(rectsOverlap(pb,goal)){
     state='win';showMsg('👑 Fase 1 completa!','Toque ou aperte ESPAÇO para jogar de novo');
@@ -175,217 +156,311 @@ function update(dt){
   camX+=(targetCam-camX)*Math.min(1,dt*4);
 }
 
-/* ===== desenho ===== */
-function drawColumn(x){
-  // coluna de pedra ao fundo, mais lenta que o resto = sensação de profundidade (3D falso)
-  const bx=x-camX*.5;if(bx<-70||bx>W+70)return;
-  const top=H*.06,w=46,h=H*.62;
-  const g=ctx.createLinearGradient(bx-w/2,0,bx+w/2,0);
-  g.addColorStop(0,'#241a12');g.addColorStop(.45,'#4a3a28');g.addColorStop(.55,'#4a3a28');g.addColorStop(1,'#1c140d');
-  ctx.fillStyle=g;
-  ctx.fillRect(bx-w/2,top,w,h);
-  ctx.fillStyle='#544433';ctx.fillRect(bx-w/2-8,top-14,w+16,16); // capitel
-  ctx.fillStyle='#544433';ctx.fillRect(bx-w/2-8,top+h,w+16,16); // base
-}
-function drawBackground(){
-  const g=ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#1a130f');g.addColorStop(1,'#33241a');
-  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-  // colunas distantes (paralaxe lenta) dão sensação de 3D falso
-  for(const c of columns)drawColumn(c.x);
-  // parede de pedra com relevo (luz em cima, sombra embaixo de cada tijolo = efeito 3D falso)
-  const bw=86,bh=58;
-  for(let row=0;row*bh<H*.65+bh;row++){
+/* ===== mundo 3D (Three.js) ===== */
+const S=40; // 1 unidade 3D = 40 "pixels" do jogo
+const wx=px=>px/S;
+const wy=py=>(GROUND_Y-py)/S; // converte altura: GROUND_Y vira chão (y=0)
+const X0=-3, XEND=(LEVEL_END+400)/S;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x140d0a);
+scene.fog=new THREE.FogExp2(0x140d0a,.018);
+const camera=new THREE.PerspectiveCamera(58,W/H,.1,300);
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(W,H);
+function resize(){W=innerWidth;H=innerHeight;camera.aspect=W/H;camera.updateProjectionMatrix();renderer.setSize(W,H)}
+addEventListener('resize',resize);
+
+scene.add(new THREE.HemisphereLight(0x8899cc,0x1a0f08,.55));
+const sun=new THREE.DirectionalLight(0xffe2b0,.35);
+sun.position.set(10,20,10);scene.add(sun);
+
+function PM(color,opts){return new THREE.MeshStandardMaterial(Object.assign({color,roughness:.85,metalness:.05},opts||{}))}
+function mesh(geo,mat,x,y,z){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);scene.add(m);return m}
+function texFromCanvas(draw,w,h){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),w,h);return new THREE.CanvasTexture(c)}
+function seededRand(n){const s=Math.sin(n*12.9898)*43758.5453;return s-Math.floor(s)}
+
+/* chão de pedra */
+const floorTex=texFromCanvas((c,w,h)=>{
+  c.fillStyle='#6b6258';c.fillRect(0,0,w,h);
+  c.strokeStyle='rgba(20,15,10,.5)';c.lineWidth=3;
+  for(let y=0;y<h;y+=32)for(let x=0;x<w;x+=32){
+    c.strokeRect(x,y,32,32);
+    c.fillStyle=`rgba(0,0,0,${.03+seededRand(x+y)*.06})`;c.fillRect(x,y,32,32);
+  }
+},256,256);
+floorTex.wrapS=floorTex.wrapT=THREE.RepeatWrapping;floorTex.repeat.set((XEND-X0)*.6,3);
+const floorW=XEND-X0;
+const floorMesh=mesh(new THREE.PlaneGeometry(floorW,7),PM(0xffffff,{map:floorTex,roughness:.95}),X0+floorW/2,0,0);
+floorMesh.rotation.x=-Math.PI/2;
+
+/* tapete vermelho no meio do corredor */
+const carpet=mesh(new THREE.PlaneGeometry(floorW-1,2.3),PM(0x7a1414,{roughness:.9}),X0+floorW/2,.01,0);
+carpet.rotation.x=-Math.PI/2;
+[-1.18,1.18].forEach(zz=>{
+  const trim=mesh(new THREE.PlaneGeometry(floorW-1,.12),PM(0xdba63d,{roughness:.6,metalness:.3}),X0+floorW/2,.012,zz);
+  trim.rotation.x=-Math.PI/2;
+});
+
+/* paredes de pedra */
+const brickTex=texFromCanvas((c,w,h)=>{
+  c.fillStyle='#3a2f26';c.fillRect(0,0,w,h);
+  c.strokeStyle='rgba(0,0,0,.5)';c.lineWidth=3;
+  const bw=48,bh=28;
+  for(let row=0;row*bh<h+bh;row++){
     const off=row%2?bw/2:0;
-    for(let x=-bw+((camX*.3)%bw)*-1+off;x<W+bw;x+=bw){
-      ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(x+2,row*bh+2,bw-4,4);
-      ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(x+2,row*bh+bh-6,bw-4,4);
-      ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;ctx.strokeRect(x,row*bh,bw,bh);
+    for(let x=-bw+off;x<w+bw;x+=bw){
+      c.fillStyle='rgba(255,255,255,.04)';c.fillRect(x+2,row*bh+2,bw-4,4);
+      c.strokeRect(x,row*bh,bw,bh);
     }
   }
-}
-function seededRand(n){const s=Math.sin(n*12.9898)*43758.5453;return s-Math.floor(s)}
-function drawWindowSlit(x){
-  const bx=x-camX;if(bx<-40||bx>W+40)return;
-  const y=H*.14;
-  ctx.fillStyle='#3a3026';ctx.fillRect(bx-24,y,48,120);
-  const g=ctx.createLinearGradient(0,y,0,y+110);
-  g.addColorStop(0,'#0a0f22');g.addColorStop(1,'#1a2438');
-  ctx.fillStyle=g;ctx.fillRect(bx-18,y+6,36,100);
-  // céu estrelado dentro da janela
-  ctx.save();
-  ctx.beginPath();ctx.rect(bx-18,y+6,36,100);ctx.clip();
-  ctx.fillStyle='#e9e4c8';
-  ctx.beginPath();ctx.arc(bx+8,y+22,8,0,Math.PI*2);ctx.fill(); // lua
-  for(let i=0;i<14;i++){
-    const rx=seededRand(x*3+i)*36-18,ry=seededRand(x*7+i+50)*100+6;
-    const rs=seededRand(x*11+i)*1.4+.6;
-    ctx.globalAlpha=.5+seededRand(x*13+i)*.5;
-    ctx.fillRect(bx+rx,y+ry,rs,rs);
-  }
-  ctx.globalAlpha=1;
-  ctx.restore();
-}
-function drawBanner(x){
-  const bx=x-camX;if(bx<-60||bx>W+60)return;
-  const top=H*.1,w=54,h=150;
-  ctx.fillStyle='#3a2a1a';ctx.fillRect(bx-w/2-6,top-6,w+12,10);
-  ctx.fillStyle='#8a1414';
-  ctx.beginPath();
-  ctx.moveTo(bx-w/2,top);ctx.lineTo(bx+w/2,top);ctx.lineTo(bx+w/2,top+h-18);
-  ctx.lineTo(bx,top+h);ctx.lineTo(bx-w/2,top+h-18);ctx.closePath();ctx.fill();
-  // fênix dourada estilizada (corpo + asas abertas)
-  ctx.fillStyle='#e8b93a';
-  ctx.save();ctx.translate(bx,top+h*.42);
-  ctx.beginPath();ctx.ellipse(0,0,7,11,0,0,Math.PI*2);ctx.fill(); // corpo
-  ctx.beginPath();ctx.moveTo(0,-4);ctx.lineTo(-20,-14);ctx.lineTo(-16,2);ctx.lineTo(-2,4);ctx.closePath();ctx.fill(); // asa esq
-  ctx.beginPath();ctx.moveTo(0,-4);ctx.lineTo(20,-14);ctx.lineTo(16,2);ctx.lineTo(2,4);ctx.closePath();ctx.fill(); // asa dir
-  ctx.beginPath();ctx.moveTo(0,10);ctx.lineTo(-5,22);ctx.lineTo(0,18);ctx.lineTo(5,22);ctx.closePath();ctx.fill(); // cauda
-  ctx.beginPath();ctx.arc(0,-10,3.4,0,Math.PI*2);ctx.fill(); // cabeça
-  ctx.restore();
-}
-function drawPortrait(x){
-  const bx=x-camX;if(bx<-50||bx>W+50)return;
-  const top=H*.16,w=70,h=90;
-  ctx.fillStyle='#8a6a2a';ctx.fillRect(bx-w/2-6,top-6,w+12,h+12);
-  ctx.fillStyle='#2a1810';ctx.fillRect(bx-w/2,top,w,h);
-  // rei estilizado: coroa + rosto + manto
-  ctx.fillStyle='#caa24a';
-  ctx.fillRect(bx-14,top+10,28,10); // coroa base
-  ctx.beginPath();ctx.moveTo(bx-14,top+10);ctx.lineTo(bx-14,top+2);ctx.lineTo(bx-7,top+10);ctx.lineTo(bx,top);ctx.lineTo(bx+7,top+10);ctx.lineTo(bx+14,top+2);ctx.lineTo(bx+14,top+10);ctx.closePath();ctx.fill();
-  ctx.fillStyle='#d9b98a';ctx.beginPath();ctx.ellipse(bx,top+32,13,15,0,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#5a1a1a';ctx.beginPath();ctx.moveTo(bx-20,top+h-4);ctx.lineTo(bx+20,top+h-4);ctx.lineTo(bx+16,top+48);ctx.lineTo(bx-16,top+48);ctx.closePath();ctx.fill();
-}
-function drawTableSet(x){
-  const bx=x-camX;if(bx<-150||bx>W+150)return;
-  const y=GROUND_Y;
-  ctx.fillStyle='#3a2a1a';
-  ctx.fillRect(bx-70,y-46,16,46);ctx.fillRect(bx-70,y-66,16,26);
-  ctx.fillRect(bx+54,y-46,16,46);ctx.fillRect(bx+54,y-66,16,26);
-  ctx.fillStyle='#5a4230';ctx.fillRect(bx-56,y-58,110,14);
-  ctx.fillStyle='#4a3626';ctx.fillRect(bx-44,y-44,10,44);ctx.fillRect(bx+34,y-44,10,44);
-  ctx.fillStyle='#8a8a92';ctx.beginPath();ctx.arc(bx-10,y-68,8,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#caa24a';ctx.fillRect(bx+10,y-72,14,14);
-}
-function drawBlood(bx,r){
-  const x=bx-camX;if(x<-60||x>W+60)return;
-  ctx.fillStyle='rgba(90,10,10,.55)';
-  ctx.beginPath();ctx.ellipse(x,GROUND_Y-4,r,r*.35,0,0,Math.PI*2);ctx.fill();
-  ctx.beginPath();ctx.ellipse(x+r*.6,GROUND_Y-2,r*.4,r*.16,0,0,Math.PI*2);ctx.fill();
-}
-function drawFallenBody(b){
-  const x=b.x-camX;if(x<-60||x>W+60)return;
-  const dir=b.flip?-1:1;
-  const y=GROUND_Y;
-  // mancha de sangue embaixo do corpo
-  ctx.fillStyle='rgba(90,10,10,.5)';
-  ctx.beginPath();ctx.ellipse(x,y-3,34,11,0,0,Math.PI*2);ctx.fill();
-  ctx.save();ctx.translate(x,y);ctx.scale(dir,1);
-  ctx.fillStyle='#4a5a3a'; // pele infectada, esverdeada, bem estilizada (sem detalhe gráfico)
-  ctx.fillRect(-26,-16,40,14); // tronco deitado
-  ctx.beginPath();ctx.arc(-30,-10,9,0,Math.PI*2);ctx.fill(); // cabeça
-  ctx.fillRect(12,-14,18,8); // perna
-  ctx.fillRect(28,-12,14,7);
-  ctx.fillRect(-10,-20,16,7); // braço caído
-  ctx.fillStyle='#1a1410';ctx.fillRect(-33,-12,3,3); // olho fechado
-  ctx.restore();
-}
-function drawDebris(d){
-  const x=d.x-camX;if(x<-50||x>W+50)return;
-  const y=GROUND_Y;
-  if(d.kind===0){
-    // cadeira quebrada
-    ctx.fillStyle='#3a2a1a';
-    ctx.save();ctx.translate(x,y);ctx.rotate(.5);
-    ctx.fillRect(-6,-30,10,34);ctx.fillRect(-6,-4,26,7);ctx.fillRect(16,-18,7,20);
-    ctx.restore();
-  }else if(d.kind===1){
-    // prato e taça caídos
-    ctx.fillStyle='#8a8a92';
-    ctx.beginPath();ctx.ellipse(x,y-4,14,5,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#caa24a';
-    ctx.save();ctx.translate(x+22,y-3);ctx.rotate(1.4);
-    ctx.fillRect(-4,-10,8,10);ctx.restore();
-  }else{
-    // machado/tocha caída no chão
-    ctx.save();ctx.translate(x,y-4);ctx.rotate(.3);
-    ctx.fillStyle='#3a2a1a';ctx.fillRect(-24,-3,40,5);
-    ctx.fillStyle='#8a8a92';ctx.fillRect(12,-9,12,14);
-    ctx.restore();
-  }
-}
-function drawPlatform(pf){
-  ctx.fillStyle='#4a3d33';
-  ctx.fillRect(pf.x-camX,pf.y,pf.w,pf.h);
-  ctx.fillStyle='#6b5a4a';
-  ctx.fillRect(pf.x-camX,pf.y,pf.w,6);
-  if(pf.h<60){
-    ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=2;
-    for(let bx=0;bx<pf.w;bx+=40)ctx.strokeRect(pf.x-camX+bx,pf.y,Math.min(40,pf.w-bx),pf.h);
-  }
-  // tapete vermelho por cima do chão principal
-  if(pf.h>100){
-    ctx.fillStyle='#7a1414';
-    ctx.fillRect(pf.x-camX,pf.y,pf.w,10);
-    ctx.strokeStyle='#ffcf4d';ctx.lineWidth=2;
-    ctx.strokeRect(pf.x-camX,pf.y+1,pf.w,8);
-  }
-}
-function drawZombie(z){
-  if(!z.alive)return;
-  const x=z.x-camX,y=z.y;
-  const jolt=z.hitT>0?Math.sin(z.hitT*40)*.1:0;
-  ctx.save();ctx.translate(x,y);ctx.rotate(jolt);
-  ctx.fillStyle='#5a6a4a';
-  ctx.fillRect(-14,-40,28,34); // corpo
-  ctx.fillStyle='#7a8a5a';
-  ctx.beginPath();ctx.arc(0,-48,11,0,Math.PI*2);ctx.fill(); // cabeça
-  ctx.fillStyle='#1a1410';
-  ctx.fillRect(-7,-51,4,4);ctx.fillRect(3,-51,4,4); // olhos
-  ctx.fillStyle='#5a6a4a';
-  ctx.fillRect(-20,-36,8,22);ctx.fillRect(12,-36,8,22); // braços caídos
-  ctx.fillStyle='#3a3a2a';
-  ctx.fillRect(-12,-6,10,8);ctx.fillRect(2,-6,10,8); // pernas
-  ctx.restore();
-}
-function drawGoal(){
-  const x=goal.x-camX;
-  ctx.fillStyle='#3a2a1a';ctx.fillRect(x-8,goal.y-10,goal.w+16,goal.h+20);
-  ctx.fillStyle='#caa24a';
-  ctx.beginPath();ctx.moveTo(x+goal.w/2-14,goal.y+10);ctx.lineTo(x+goal.w/2-14,goal.y+2);ctx.lineTo(x+goal.w/2-7,goal.y+10);ctx.lineTo(x+goal.w/2,goal.y);ctx.lineTo(x+goal.w/2+7,goal.y+10);ctx.lineTo(x+goal.w/2+14,goal.y+2);ctx.lineTo(x+goal.w/2+14,goal.y+10);ctx.closePath();ctx.fill();
-  ctx.fillStyle='#8a1414';ctx.fillRect(x+8,goal.y+16,goal.w-16,goal.h-16);
-  ctx.strokeStyle='#caa24a';ctx.lineWidth=3;ctx.strokeRect(x+8,goal.y+16,goal.w-16,goal.h-16);
-}
-function drawPlayer(){
-  if(P.inv>0&&Math.floor(t*14)%2===0)return;
-  const x=P.x-camX,y=P.y;
-  ctx.fillStyle='#8a6a45';
-  ctx.fillRect(x,y,P.w,P.h);
-  ctx.fillStyle='#3a2412';
-  const eyeX=P.dir>0?x+P.w-11:x+5;
-  ctx.fillRect(eyeX,y+10,6,6);
-}
-function draw(){
-  drawBackground();
-  for(const w of [220,720,1220,1720,2220,2720,3220])drawWindowSlit(w);
-  for(const p of portraits)drawPortrait(p.x);
-  for(const b of banners)drawBanner(b.x);
-  for(const pf of platforms)drawPlatform(pf);
-  for(const ts of tableSets)drawTableSet(ts.x);
-  for(const b of bloodSpots)drawBlood(b.x,b.r);
-  for(const d of debris)drawDebris(d);
-  for(const fb of fallenBodies)drawFallenBody(fb);
-  for(const z of zombies)drawZombie(z);
-  drawGoal();
-  drawPlayer();
-}
+},256,256);
+brickTex.wrapS=brickTex.wrapT=THREE.RepeatWrapping;brickTex.repeat.set((XEND-X0)*.5,2.2);
+const WALL_Z=3.6;
+[-1,1].forEach(side=>{
+  const wall=mesh(new THREE.PlaneGeometry(floorW+10,7),PM(0xffffff,{map:brickTex}),X0+floorW/2,3.4,WALL_Z*side);
+  wall.rotation.y=side>0?Math.PI:0;
+});
 
+/* colunas ao longo do corredor (profundidade real) */
+function makeColumn(px,side){
+  const x=wx(px),z=WALL_Z*side-side*.3;
+  const col=mesh(new THREE.CylinderGeometry(.42,.5,5.6,10),PM(0x4a3a28),x,2.8,z);
+  mesh(new THREE.BoxGeometry(1.2,.3,1.2),PM(0x544433),x,5.6,z);
+  mesh(new THREE.BoxGeometry(1.2,.3,1.2),PM(0x544433),x,.15,z);
+  return col;
+}
+[[100,-1],[900,1],[1700,-1],[2500,1],[3200,-1]].forEach(p=>makeColumn(p[0],p[1]));
+
+/* janelas com céu estrelado */
+function makeWindow(px){
+  const x=wx(px),z=WALL_Z-.05;
+  mesh(new THREE.BoxGeometry(1.6,3.2,.3),PM(0x3a3026),x,4,z);
+  const starTex=texFromCanvas((c,w,h)=>{
+    const g=c.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,'#0a0f22');g.addColorStop(1,'#1a2438');
+    c.fillStyle=g;c.fillRect(0,0,w,h);
+    c.fillStyle='#e9e4c8';c.beginPath();c.arc(w*.28,h*.22,w*.12,0,Math.PI*2);c.fill();
+    for(let i=0;i<20;i++){
+      const rx=seededRand(px*3+i)*w,ry=seededRand(px*7+i+50)*h,rs=seededRand(px*11+i)*2+.8;
+      c.globalAlpha=.4+seededRand(px*13+i)*.6;
+      c.fillRect(rx,ry,rs,rs);
+    }
+    c.globalAlpha=1;
+  },128,256);
+  mesh(new THREE.PlaneGeometry(1.2,2.8),new THREE.MeshBasicMaterial({map:starTex}),x,4,z-.12).rotation.y=Math.PI;
+  const moon=new THREE.PointLight(0x9db4e0,.5,7);moon.position.set(x,4,z-1.2);scene.add(moon);
+}
+windowXs.forEach(makeWindow);
+
+/* bandeiras vermelhas com fênix dourada */
+function makeBanner(px){
+  const x=wx(px),z=WALL_Z-.1;
+  const tex=texFromCanvas((c,w,h)=>{
+    c.clearRect(0,0,w,h);
+    c.fillStyle='#8a1414';
+    c.beginPath();c.moveTo(w*.1,0);c.lineTo(w*.9,0);c.lineTo(w*.9,h*.8);c.lineTo(w*.5,h);c.lineTo(w*.1,h*.8);c.closePath();c.fill();
+    c.fillStyle='#e8b93a';c.save();c.translate(w*.5,h*.4);
+    c.beginPath();c.ellipse(0,0,w*.08,h*.09,0,0,Math.PI*2);c.fill();
+    c.beginPath();c.moveTo(0,-h*.04);c.lineTo(-w*.22,-h*.12);c.lineTo(-w*.18,h*.02);c.lineTo(-w*.02,h*.04);c.closePath();c.fill();
+    c.beginPath();c.moveTo(0,-h*.04);c.lineTo(w*.22,-h*.12);c.lineTo(w*.18,h*.02);c.lineTo(w*.02,h*.04);c.closePath();c.fill();
+    c.beginPath();c.arc(0,-h*.1,w*.035,0,Math.PI*2);c.fill();
+    c.restore();
+  },128,192);
+  mesh(new THREE.PlaneGeometry(1.4,2.2),new THREE.MeshBasicMaterial({map:tex,transparent:true}),x,4.6,z).rotation.y=Math.PI;
+}
+banners.forEach(b=>makeBanner(b.x));
+
+/* quadros de reis */
+function makePortrait(px){
+  const x=wx(px),z=WALL_Z-.1;
+  const tex=texFromCanvas((c,w,h)=>{
+    c.fillStyle='#8a6a2a';c.fillRect(0,0,w,h);
+    c.fillStyle='#2a1810';c.fillRect(w*.08,h*.08,w*.84,h*.84);
+    c.fillStyle='#caa24a';c.fillRect(w*.32,h*.18,w*.36,h*.12);
+    c.beginPath();c.moveTo(w*.32,h*.18);c.lineTo(w*.32,h*.06);c.lineTo(w*.42,h*.18);c.lineTo(w*.5,h*.04);c.lineTo(w*.58,h*.18);c.lineTo(w*.68,h*.06);c.lineTo(w*.68,h*.18);c.closePath();c.fill();
+    c.fillStyle='#d9b98a';c.beginPath();c.ellipse(w*.5,h*.42,w*.16,h*.18,0,0,Math.PI*2);c.fill();
+    c.fillStyle='#5a1a1a';c.beginPath();c.moveTo(w*.28,h*.62);c.lineTo(w*.72,h*.62);c.lineTo(w*.64,h*.9);c.lineTo(w*.36,h*.9);c.closePath();c.fill();
+  },128,160);
+  mesh(new THREE.PlaneGeometry(1.4,1.75),new THREE.MeshBasicMaterial({map:tex}),x,3.9,z).rotation.y=Math.PI;
+}
+portraits.forEach(p=>makePortrait(p.x));
+
+/* mesas com cadeiras (decoração ao fundo) */
+function makeTableSet(px){
+  const x=wx(px),z=WALL_Z*(px%2===0?1:-1)-(px%2===0?1:-1)*.9;
+  const wood=PM(0x4a3626),top=PM(0x5a4230);
+  [[-1.1,-.6],[-1.1,.6],[1.1,-.6],[1.1,.6]].forEach(l=>mesh(new THREE.BoxGeometry(.12,1,.12),wood,x+l[0],.5,z+l[1]));
+  mesh(new THREE.BoxGeometry(2.4,.12,1.4),top,x,1.05,z);
+  // cadeiras
+  [-1.8,1.8].forEach(cx=>{
+    mesh(new THREE.BoxGeometry(.7,.6,.7),wood,x+cx,.3,z);
+    mesh(new THREE.BoxGeometry(.7,.7,.1),wood,x+cx,.65,z+(cx>0?.3:-.3));
+  });
+  mesh(new THREE.CylinderGeometry(.18,.22,.3,8),PM(0x8a8a92),x-.4,1.25,z);
+  mesh(new THREE.BoxGeometry(.3,.3,.3),PM(0xcaa24a),x+.5,1.25,z);
+}
+tableSets.forEach(ts=>makeTableSet(ts.x));
+
+/* vasos de flores no caminho */
+function makeVase(px,side){
+  const x=wx(px),z=1.55*side;
+  mesh(new THREE.CylinderGeometry(.16,.22,.5,10),PM(0x9a5a3a),x,.25,z);
+  const colors=[0xdd5577,0xffcf4d,0xffffff,0xaa66dd];
+  for(let i=0;i<5;i++){
+    const ang=i/5*Math.PI*2;
+    mesh(new THREE.SphereGeometry(.12,8,8),PM(colors[i%colors.length],{roughness:.6}),x+Math.cos(ang)*.14,.62+seededRand(px+i)*.12,z+Math.sin(ang)*.14);
+  }
+  mesh(new THREE.CylinderGeometry(.03,.03,.5,6),PM(0x3a5a2a),x,.5,z);
+}
+vases.forEach(v=>makeVase(v.x,v.side));
+
+/* manchas de sangue no chão */
+function makeBlood(px,r){
+  const x=wx(px);
+  const bm=mesh(new THREE.CircleGeometry(r/S,10),new THREE.MeshBasicMaterial({color:0x5a0a0a,transparent:true,opacity:.55}),x,.015,(seededRand(px)-.5)*1.6);
+  bm.rotation.x=-Math.PI/2;
+}
+bloodSpots.forEach(b=>makeBlood(b.x,b.r));
+
+/* corpos caídos infectados pelo zumbi (decoração, sem detalhe gráfico) */
+function makeFallenBody(px,flip){
+  const x=wx(px),z=flip?1.7:-1.7;
+  const bm=mesh(new THREE.CircleGeometry(.9,10),new THREE.MeshBasicMaterial({color:0x5a0a0a,transparent:true,opacity:.5}),x,.012,z);
+  bm.rotation.x=-Math.PI/2;
+  const g=new THREE.Group();
+  const skin=PM(0x4a5a3a,{roughness:.9});
+  const torso=new THREE.Mesh(new THREE.BoxGeometry(1,.34,.4),skin);torso.position.set(0,.2,0);g.add(torso);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.22,8,8),skin);head.position.set(-.7,.24,0);g.add(head);
+  const leg1=new THREE.Mesh(new THREE.BoxGeometry(.5,.2,.2),skin);leg1.position.set(.6,.16,0);g.add(leg1);
+  const leg2=new THREE.Mesh(new THREE.BoxGeometry(.35,.18,.18),skin);leg2.position.set(1,.14,0);g.add(leg2);
+  const arm=new THREE.Mesh(new THREE.BoxGeometry(.4,.16,.18),skin);arm.position.set(-.3,.28,0);g.add(arm);
+  g.position.set(x,0,z);g.rotation.y=flip?.4:-.4+Math.PI;
+  scene.add(g);
+}
+fallenBodies.forEach(fb=>makeFallenBody(fb.x,fb.flip));
+
+/* coisas caídas: móveis quebrados, prato/taça, tocha caída */
+function makeDebris(px,kind){
+  const x=wx(px),z=(kind-1)*.9;
+  const wood=PM(0x3a2a1a),metal=PM(0x8a8a92,{metalness:.4,roughness:.5});
+  if(kind===0){
+    const g=new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(.9,.15,.15),wood));
+    const l1=new THREE.Mesh(new THREE.BoxGeometry(.15,.5,.15),wood);l1.position.set(-.3,.15,0);g.add(l1);
+    const l2=new THREE.Mesh(new THREE.BoxGeometry(.15,.5,.15),wood);l2.position.set(.3,.15,0);g.add(l2);
+    g.rotation.z=.5;g.position.set(x,.15,z);scene.add(g);
+  }else if(kind===1){
+    const plate=mesh(new THREE.CylinderGeometry(.32,.32,.04,12),metal,x,.03,z);
+    const cup=mesh(new THREE.CylinderGeometry(.1,.08,.22,8),PM(0xcaa24a),x+.4,.11,z);
+    cup.rotation.z=1.4;
+  }else{
+    const handle=mesh(new THREE.CylinderGeometry(.05,.05,.9,6),wood,x,.06,z);
+    handle.rotation.z=1.2;
+    const head=mesh(new THREE.BoxGeometry(.25,.28,.06),metal,x+.4,.1,z);
+    head.rotation.z=1.2;
+  }
+}
+debris.forEach(d=>makeDebris(d.x,d.kind));
+
+/* plataformas elevadas */
+platforms.forEach(pf=>{
+  if(pf.h>100)return; // chão principal já é o piso 3D
+  const x=wx(pf.x)+wx(pf.w)/2,y=wy(pf.y);
+  mesh(new THREE.BoxGeometry(wx(pf.w),.5,2.6),PM(0x4a3d33),x,y-.25,0);
+});
+
+/* tochas com luz tremeluzente */
+const torchLights=[];
+function makeTorch(px,side){
+  const x=wx(px),z=WALL_Z*side-side*.15;
+  mesh(new THREE.CylinderGeometry(.06,.08,1,6),PM(0x2a1d12),x,2.6,z);
+  const flame=new THREE.PointLight(0xffaa44,1.4,9);
+  flame.position.set(x,3.1,z);scene.add(flame);
+  torchLights.push({light:flame,phase:Math.random()*10});
+  mesh(new THREE.SphereGeometry(.12,8,8),new THREE.MeshBasicMaterial({color:0xffcc66}),x,3.1,z);
+}
+[[350,-1],[1100,1],[1850,-1],[2600,1],[3150,-1]].forEach(p=>makeTorch(p[0],p[1]));
+
+/* porta do castelo (meta) */
+function makeGoal(px){
+  const x=wx(px);
+  mesh(new THREE.BoxGeometry(2.4,4,.4),PM(0x3a2a1a),x,2,0);
+  mesh(new THREE.BoxGeometry(1.6,3,.2),PM(0x8a1414),x,1.5,.25);
+  const crown=mesh(new THREE.ConeGeometry(.3,.4,4),PM(0xcaa24a,{metalness:.5,roughness:.4}),x,3.6,.2);
+  crown.rotation.y=Math.PI/4;
+}
+makeGoal(goal.x);
+
+/* zumbis: patrulham (mesh persistente + estado em update()) */
+function makeZombieMesh(){
+  const g=new THREE.Group();
+  const skin=PM(0x5a6a4a),skinLight=PM(0x7a8a5a),dark=PM(0x1a1410);
+  const torso=new THREE.Mesh(new THREE.BoxGeometry(.7,.85,.4),skin);torso.position.y=1.28;g.add(torso);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.28,10,10),skinLight);head.position.y=1.95;g.add(head);
+  const eyeL=new THREE.Mesh(new THREE.BoxGeometry(.08,.08,.05),dark);eyeL.position.set(-.1,1.98,.24);g.add(eyeL);
+  const eyeR=new THREE.Mesh(new THREE.BoxGeometry(.08,.08,.05),dark);eyeR.position.set(.1,1.98,.24);g.add(eyeR);
+  const armL=new THREE.Mesh(new THREE.BoxGeometry(.2,.55,.2),skin);armL.position.set(-.5,1.3,0);g.add(armL);
+  const armR=new THREE.Mesh(new THREE.BoxGeometry(.2,.55,.2),skin);armR.position.set(.5,1.3,0);g.add(armR);
+  const legL=new THREE.Mesh(new THREE.BoxGeometry(.25,.7,.25),PM(0x3a3a2a));legL.position.set(-.18,.35,0);g.add(legL);
+  const legR=new THREE.Mesh(new THREE.BoxGeometry(.25,.7,.25),PM(0x3a3a2a));legR.position.set(.18,.35,0);g.add(legR);
+  scene.add(g);
+  return g;
+}
+const zombieMeshes=zombiesData.map(()=>makeZombieMesh());
+
+/* personagem: ninja com capa preta, só olhos e cabelo aparecem */
+const player3d=new THREE.Group();
+const cloakMat=PM(0x0c0c0e,{roughness:.75});
+const body=new THREE.Mesh(new THREE.CylinderGeometry(.26,.4,1.05,10),cloakMat);body.position.y=.72;player3d.add(body);
+const cape=new THREE.Mesh(new THREE.ConeGeometry(.5,1.1,8,1,true),PM(0x090909,{roughness:.9,side:THREE.DoubleSide}));
+cape.position.set(0,.65,-.12);cape.rotation.x=Math.PI;player3d.add(cape);
+const hood=new THREE.Mesh(new THREE.SphereGeometry(.26,12,12),cloakMat);hood.position.y=1.42;player3d.add(hood);
+const hair=new THREE.Mesh(new THREE.ConeGeometry(.14,.28,6),PM(0x2a1a10,{roughness:.8}));
+hair.position.set(0,1.62,-.08);hair.rotation.x=.3;player3d.add(hair);
+const eyeGlowMat=new THREE.MeshBasicMaterial({color:0x8fe7ff});
+const eL=new THREE.Mesh(new THREE.SphereGeometry(.035,6,6),eyeGlowMat);eL.position.set(-.09,1.43,.22);player3d.add(eL);
+const eR=new THREE.Mesh(new THREE.SphereGeometry(.035,6,6),eyeGlowMat);eR.position.set(.09,1.43,.22);player3d.add(eR);
+scene.add(player3d);
+
+/* ===== loop principal ===== */
 let last=performance.now();
 function frame(now){
   requestAnimationFrame(frame);
   const dt=Math.min(.033,(now-last)/1000);last=now;
-  update(dt);draw();
+  update(dt);
+
+  // jogador
+  player3d.position.set(wx(P.x),wy(P.y+P.h),0);
+  player3d.scale.x=P.dir>=0?1:-1;
+  player3d.visible=!(P.inv>0&&Math.floor(t*14)%2===0);
+
+  // zumbis
+  for(const z of zombies){
+    if(!z.mesh)continue;
+    z.mesh.visible=z.alive;
+    if(z.alive){
+      z.mesh.position.set(wx(z.x),Math.abs(Math.sin(t*6))*.04,0);
+      z.mesh.scale.x=z.dir>=0?1:-1;
+      const jolt=z.hitT>0?Math.sin(z.hitT*40)*.15:0;
+      z.mesh.rotation.z=jolt;
+    }
+  }
+
+  // tochas tremeluzentes
+  for(const tl of torchLights){
+    tl.light.intensity=1.3*(1+Math.sin(t*9+tl.phase)*.18+Math.sin(t*23+tl.phase)*.08+(Math.random()-.5)*.06);
+  }
+
+  // câmera segue o jogador
+  const camWX=wx(camX);
+  camera.position.set(camWX+2.2,3.1,7.5);
+  camera.lookAt(camWX+2.2,1.15,0);
+
+  renderer.render(scene,camera);
 }
+showMsg('🏰 Jogo do Castelo 3D','Toque ou aperte ESPAÇO para começar — cuidado com os zumbis!');
 requestAnimationFrame(frame);
 })();
 </script>
