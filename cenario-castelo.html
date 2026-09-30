@@ -3,197 +3,192 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Cenário de Castelo Medieval</title>
+<title>Cenário de Castelo Medieval 3D</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
-html,body{height:100%;margin:0;overflow:hidden;background:#0a0808;font-family:"Trebuchet MS",system-ui,sans-serif}
+html,body{height:100%;margin:0;overflow:hidden;background:#05040300;font-family:"Trebuchet MS",system-ui,sans-serif}
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
-#tag{position:fixed;left:14px;bottom:14px;color:#fff3d4;font-weight:800;font-size:clamp(13px,2.2vw,18px);text-shadow:0 2px 4px rgba(0,0,0,.7);opacity:.8}
+#tag{position:fixed;left:14px;bottom:14px;color:#fff3d4;font-weight:800;font-size:clamp(13px,2.2vw,18px);text-shadow:0 2px 4px rgba(0,0,0,.7);opacity:.85;z-index:2}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="tag">🏰 Corredor do Castelo Medieval</div>
+<div id="tag">🏰 Corredor do Castelo Medieval — 3D</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
 'use strict';
-const cv=document.getElementById('c'),ctx=cv.getContext('2d');
-let W=0,H=0;
-function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight}
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x0a0704,.05);
+const camera=new THREE.PerspectiveCamera(58,1,.1,200);
+let W=1,H=1;
+function resize(){W=innerWidth;H=innerHeight;renderer.setSize(W,H,false);camera.aspect=W/H;camera.updateProjectionMatrix()}
 addEventListener('resize',resize);resize();
 
-/* ===== paleta escura, ambiente medieval ===== */
-function drawFloorAndWalls(){
-  // chão de pedra
-  ctx.fillStyle='#2a221c';
-  ctx.fillRect(0,H*.62,W,H*.38);
-  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;
-  const fbw=W/10;
-  for(let i=0;i<=10;i++){
-    ctx.beginPath();ctx.moveTo(i*fbw,H*.62);ctx.lineTo(i*fbw,H);ctx.stroke();
+const PM=(c,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.92,metalness:.04},o||{}));
+function mesh(g,m,x,y,z){const o=new THREE.Mesh(g,m);o.position.set(x||0,y||0,z||0);return o}
+
+/* ===== texturas procedurais ===== */
+function brickTexture(){
+  const cv=document.createElement('canvas');cv.width=cv.height=128;const x=cv.getContext('2d');
+  x.fillStyle='#241d17';x.fillRect(0,0,128,128);
+  x.strokeStyle='#0c0906';x.lineWidth=4;
+  for(let row=0;row<4;row++){
+    const oy=row*32,off=row%2?16:0;
+    x.beginPath();x.moveTo(0,oy);x.lineTo(128,oy);x.stroke();
+    for(let col=-1;col<5;col++){const bx=col*32+off;x.beginPath();x.moveTo(bx,oy);x.lineTo(bx,oy+32);x.stroke()}
   }
-  for(let y=H*.62;y<H;y+=(H-H*.62)/6)ctx.beginPath(),ctx.moveTo(0,y),ctx.lineTo(W,y),ctx.stroke();
-
-  // teto escuro
-  const cg=ctx.createLinearGradient(0,0,0,H*.18);
-  cg.addColorStop(0,'#0c0906');cg.addColorStop(1,'#1c1610');
-  ctx.fillStyle=cg;ctx.fillRect(0,0,W,H*.18);
-
-  // parede de fundo (perspectiva do corredor)
-  const wallTop=H*.18,wallBot=H*.62;
-  const wg=ctx.createLinearGradient(0,wallTop,0,wallBot);
-  wg.addColorStop(0,'#241d17');wg.addColorStop(1,'#1a140f');
-  ctx.fillStyle=wg;ctx.fillRect(W*.28,wallTop,W*.44,wallBot-wallTop);
-  drawBrickPattern(W*.28,wallTop,W*.44,wallBot-wallTop,54,34,'rgba(0,0,0,.4)');
-
-  // paredes laterais (perspectiva)
-  ctx.fillStyle='#211a14';
-  ctx.beginPath();ctx.moveTo(0,H*.14);ctx.lineTo(W*.28,wallTop);ctx.lineTo(W*.28,wallBot);ctx.lineTo(0,H*.68);ctx.closePath();ctx.fill();
-  ctx.beginPath();ctx.moveTo(W,H*.14);ctx.lineTo(W*.72,wallTop);ctx.lineTo(W*.72,wallBot);ctx.lineTo(W,H*.68);ctx.closePath();ctx.fill();
-  drawBrickPatternSkew(0,H*.14,W*.28,wallTop,W*.28,wallBot,0,H*.68,'rgba(0,0,0,.35)');
-  drawBrickPatternSkew(W,H*.14,W*.72,wallTop,W*.72,wallBot,W,H*.68,'rgba(0,0,0,.35)');
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
 }
-function drawBrickPattern(x,y,w,h,bw,bh,color){
-  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
-  ctx.strokeStyle=color;ctx.lineWidth=2;
-  for(let row=0;row*bh<h;row++){
-    const oy=y+row*bh,off=row%2?bw/2:0;
-    ctx.beginPath();ctx.moveTo(x,oy);ctx.lineTo(x+w,oy);ctx.stroke();
-    for(let bx=x-bw+off;bx<x+w+bw;bx+=bw){ctx.beginPath();ctx.moveTo(bx,oy);ctx.lineTo(bx,oy+bh);ctx.stroke()}
+function floorTexture(){
+  const cv=document.createElement('canvas');cv.width=cv.height=128;const x=cv.getContext('2d');
+  x.fillStyle='#2a221c';x.fillRect(0,0,128,128);
+  x.strokeStyle='rgba(0,0,0,.45)';x.lineWidth=4;
+  for(let i=0;i<=2;i++){
+    x.beginPath();x.moveTo(i*64,0);x.lineTo(i*64,128);x.stroke();
+    x.beginPath();x.moveTo(0,i*64);x.lineTo(128,i*64);x.stroke();
   }
-  ctx.restore();
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
 }
-function drawBrickPatternSkew(x0,y0,x1,y1,x2,y2,x3,y3,color){
-  // aproximação simples: linhas horizontais entre os dois lados do trapézio
-  ctx.save();
-  ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.lineTo(x2,y2);ctx.lineTo(x3,y3);ctx.closePath();ctx.clip();
-  ctx.strokeStyle=color;ctx.lineWidth=2;
-  const rows=8;
-  for(let i=0;i<=rows;i++){
-    const t=i/rows;
-    const ax=x0+(x1-x0)*t,ay=y0+(y1-y0)*t;
-    const bx=x3+(x2-x3)*t,by=y3+(y2-y3)*t;
-    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();
-  }
-  ctx.restore();
+function glowTexture(){
+  const cv=document.createElement('canvas');cv.width=cv.height=64;const x=cv.getContext('2d');
+  const g=x.createRadialGradient(32,32,0,32,32,32);
+  g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.4,'rgba(255,210,140,.55)');g.addColorStop(1,'rgba(255,190,90,0)');
+  x.fillStyle=g;x.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(cv);
 }
-
-/* ===== janelas com luar ===== */
-function drawWindow(cx,cy,w,h){
-  ctx.save();
-  ctx.translate(cx,cy);
-  // moldura de pedra
-  ctx.fillStyle='#3a3026';
-  ctx.beginPath();
-  ctx.moveTo(-w/2-10,h/2);ctx.lineTo(-w/2-10,-h/2+18);
-  ctx.quadraticCurveTo(-w/2-10,-h/2-16,0,-h/2-16);
-  ctx.quadraticCurveTo(w/2+10,-h/2-16,w/2+10,-h/2+18);
-  ctx.lineTo(w/2+10,h/2);ctx.closePath();ctx.fill();
-  // vidro / luar
-  const g=ctx.createLinearGradient(0,-h/2,0,h/2);
-  g.addColorStop(0,'#3a4a6a');g.addColorStop(1,'#1a2438');
-  ctx.fillStyle=g;
-  ctx.beginPath();
-  ctx.moveTo(-w/2,h/2);ctx.lineTo(-w/2,-h/2+14);
-  ctx.quadraticCurveTo(-w/2,-h/2-8,0,-h/2-8);
-  ctx.quadraticCurveTo(w/2,-h/2-8,w/2,-h/2+14);
-  ctx.lineTo(w/2,h/2);ctx.closePath();ctx.fill();
-  // lua
-  ctx.fillStyle='rgba(255,250,220,.85)';
-  ctx.beginPath();ctx.arc(w*.18,-h*.22,w*.14,0,Math.PI*2);ctx.fill();
-  // travessas
-  ctx.strokeStyle='#2a221a';ctx.lineWidth=5;
-  ctx.beginPath();ctx.moveTo(0,-h/2-8);ctx.lineTo(0,h/2);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(-w/2,0);ctx.lineTo(w/2,0);ctx.stroke();
-  ctx.restore();
+function windowGlassTexture(){
+  const cv=document.createElement('canvas');cv.width=64;cv.height=96;const x=cv.getContext('2d');
+  const g=x.createLinearGradient(0,0,0,96);
+  g.addColorStop(0,'#3a4a6a');g.addColorStop(1,'#141c2e');
+  x.fillStyle=g;x.fillRect(0,0,64,96);
+  x.fillStyle='rgba(255,250,222,.9)';
+  x.beginPath();x.arc(44,22,10,0,Math.PI*2);x.fill();
+  x.strokeStyle='#14100c';x.lineWidth=4;
+  x.beginPath();x.moveTo(32,0);x.lineTo(32,96);x.stroke();
+  x.beginPath();x.moveTo(0,48);x.lineTo(64,48);x.stroke();
+  return new THREE.CanvasTexture(cv);
 }
 
-/* ===== tocha ===== */
-function drawTorch(x,y,t){
-  const flick=5+Math.sin(t*9+x)*2.5+Math.random()*1.5;
-  const glow=ctx.createRadialGradient(x,y,0,x,y,60+flick);
-  glow.addColorStop(0,'rgba(255,170,60,.45)');glow.addColorStop(1,'rgba(255,170,60,0)');
-  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(x,y,60+flick,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#4a3a2a';ctx.fillRect(x-4,y,8,26);
-  ctx.fillStyle='#ffcf4d';
-  ctx.beginPath();ctx.ellipse(x,y-5-flick*.3,6,10+flick*.5,0,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#ff6b2e';
-  ctx.beginPath();ctx.ellipse(x,y-3-flick*.2,3.5,6+flick*.3,0,0,Math.PI*2);ctx.fill();
-}
+const CORR_LEN=52,CORR_W=9,CORR_H=8,startZ=6;
+const brickTex=brickTexture();brickTex.repeat.set(CORR_LEN/2.5,CORR_H/1.6);
+const floorTex=floorTexture();floorTex.repeat.set(CORR_W/1.6,CORR_LEN/1.6);
+const wallMat=new THREE.MeshStandardMaterial({color:0xffffff,map:brickTex,roughness:.95});
+const floorMat=new THREE.MeshStandardMaterial({color:0xffffff,map:floorTex,roughness:.9});
+const ceilMat=PM(0x0b0805);
 
-/* ===== tapete vermelho no corredor ===== */
-function drawCarpet(){
-  ctx.fillStyle='#7a1a1a';
-  ctx.beginPath();
-  ctx.moveTo(W*.46,H*.62);ctx.lineTo(W*.54,H*.62);ctx.lineTo(W*.82,H);ctx.lineTo(W*.18,H);ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle='#ffcf4d';ctx.lineWidth=3;
-  ctx.beginPath();ctx.moveTo(W*.465,H*.62);ctx.lineTo(W*.2,H);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(W*.535,H*.62);ctx.lineTo(W*.8,H);ctx.stroke();
-}
+const midZ=startZ-CORR_LEN/2;
+scene.add(mesh(new THREE.PlaneGeometry(CORR_W,CORR_LEN).rotateX(-Math.PI/2),floorMat,0,0,midZ));
+scene.add(mesh(new THREE.PlaneGeometry(CORR_W,CORR_LEN).rotateX(Math.PI/2),ceilMat,0,CORR_H,midZ));
+scene.add(mesh(new THREE.PlaneGeometry(CORR_LEN,CORR_H).rotateY(Math.PI/2),wallMat,-CORR_W/2,CORR_H/2,midZ));
+scene.add(mesh(new THREE.PlaneGeometry(CORR_LEN,CORR_H).rotateY(-Math.PI/2),wallMat,CORR_W/2,CORR_H/2,midZ));
+scene.add(mesh(new THREE.PlaneGeometry(CORR_W,CORR_H),PM(0x140f0b),0,CORR_H/2,midZ-CORR_LEN/2-.5));
 
-/* ===== mesa com cadeiras ao fundo ===== */
-function drawTableSet(x,y,scale,side){
-  ctx.save();ctx.translate(x,y);ctx.scale(scale*side,scale);
-  // cadeiras
-  ctx.fillStyle='#3a2a1a';
-  ctx.fillRect(-46,-8,16,26);ctx.fillRect(-46,-28,16,22);
-  ctx.fillRect(30,-8,16,26);ctx.fillRect(30,-28,16,22);
-  // mesa
-  ctx.fillStyle='#5a4230';
-  ctx.fillRect(-34,-14,68,10);
-  ctx.fillStyle='#4a3626';
-  ctx.fillRect(-28,-4,8,20);ctx.fillRect(20,-4,8,20);
-  // jarra/objetos em cima
-  ctx.fillStyle='#8a8a92';
-  ctx.beginPath();ctx.arc(-6,-20,6,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#caa24a';
-  ctx.fillRect(8,-22,10,10);
-  ctx.restore();
-}
+/* ===== tapete vermelho ===== */
+const carpetMat=PM(0x7a1414,{roughness:.85});
+scene.add(mesh(new THREE.PlaneGeometry(2.6,CORR_LEN-4).rotateX(-Math.PI/2),carpetMat,0,.015,midZ));
+const goldMat=PM(0xffcf4d,{metalness:.6,roughness:.35});
+[-1.35,1.35].forEach(sx=>scene.add(mesh(new THREE.BoxGeometry(.06,.02,CORR_LEN-4),goldMat,sx,.02,midZ)));
 
-/* ===== corpo caído estilizado (sem grafismo pesado) ===== */
-function drawFallenBody(x,y,scale,flip){
-  ctx.save();ctx.translate(x,y);ctx.scale(scale*(flip?-1:1),scale);
-  // mancha escura no chão (sugestão de sangue, discreta)
-  ctx.fillStyle='rgba(90,10,10,.55)';
-  ctx.beginPath();ctx.ellipse(6,4,34,12,0,0,Math.PI*2);ctx.fill();
-  // corpo (silhueta simples, capa/armadura)
-  ctx.fillStyle='#3a3630';
-  ctx.beginPath();
-  ctx.ellipse(0,0,30,9,0,0,Math.PI*2);ctx.fill();
-  ctx.beginPath();ctx.ellipse(-26,-1,9,7,0,0,Math.PI*2);ctx.fill(); // cabeça
-  ctx.fillStyle='#5a4230';
-  ctx.fillRect(-4,-6,26,5); // braço caído
-  ctx.restore();
+/* ===== janelas ===== */
+const glassTex=windowGlassTexture();
+function makeWindow(x,z,facingRight){
+  const g=new THREE.Group();
+  const frame=mesh(new THREE.BoxGeometry(.25,2.6,1.5),PM(0x3a3026),0,1.5,0);
+  g.add(frame);
+  const glassMat=new THREE.MeshStandardMaterial({map:glassTex,emissive:0x1a2438,emissiveIntensity:.5,roughness:.3});
+  const glass=mesh(new THREE.PlaneGeometry(1.3,2.1),glassMat,facingRight?-.14:.14,1.5,0);
+  glass.rotation.y=facingRight?-Math.PI/2:Math.PI/2;
+  g.add(glass);
+  g.position.set(x,0,z);
+  scene.add(g);
+  const moon=new THREE.PointLight(0x8fb0ff,.35,6);
+  moon.position.set(x+(facingRight?-.4:.4),2.2,z);
+  scene.add(moon);
 }
+[-14,-30,-44].forEach(z=>{makeWindow(-CORR_W/2+.02,midZ+CORR_LEN/2-startZ+z,false);makeWindow(CORR_W/2-.02,midZ+CORR_LEN/2-startZ+z,true)});
 
+/* ===== tochas (luz de verdade + chama) ===== */
+const glowTex=glowTexture();
+const torchLights=[];
+function makeTorch(x,z,facingRight){
+  const g=new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(.06,.07,.7,8),PM(0x4a3a2a),0,1.6,0));
+  const flameSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xffb04a,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));
+  flameSprite.scale.set(.55,.8,1);flameSprite.position.set(0,2.05,0);
+  g.add(flameSprite);
+  g.position.set(x,0,z);
+  scene.add(g);
+  const light=new THREE.PointLight(0xff9a4a,1.6,7,2);
+  light.position.set(x+(facingRight?-.3:.3),2,z);
+  scene.add(light);
+  torchLights.push({light,flame:flameSprite,base:1.6,ph:Math.random()*10});
+}
+[-7,-21,-37,-49].forEach(z=>{makeTorch(-CORR_W/2+.05,midZ+CORR_LEN/2-startZ+z,false);makeTorch(CORR_W/2-.05,midZ+CORR_LEN/2-startZ+z,true)});
+
+/* ===== mesas com cadeiras ao fundo ===== */
+function makeTableSet(x,z,facing){
+  const g=new THREE.Group();
+  const woodMat=PM(0x5a4230),darkWood=PM(0x3a2a1a);
+  g.add(mesh(new THREE.BoxGeometry(1.4,.1,.7),woodMat,0,.85,0));
+  [[-.6,-.28],[-.6,.28],[.6,-.28],[.6,.28]].forEach(([lx,lz])=>g.add(mesh(new THREE.CylinderGeometry(.04,.04,.85,6),darkWood,lx,.42,lz)));
+  const chairMat=PM(0x3a2a1a);
+  [-.95,.95].forEach(cx=>{
+    const chair=new THREE.Group();
+    chair.add(mesh(new THREE.BoxGeometry(.4,.06,.4),chairMat,0,.45,0));
+    chair.add(mesh(new THREE.BoxGeometry(.4,.55,.06),chairMat,0,.72,.18));
+    [[-.16,-.16],[.16,-.16],[-.16,.16],[.16,.16]].forEach(([lx,lz])=>chair.add(mesh(new THREE.CylinderGeometry(.03,.03,.45,6),chairMat,lx,.22,lz)));
+    chair.position.set(cx,0,0);g.add(chair);
+  });
+  g.add(mesh(new THREE.CylinderGeometry(.1,.13,.22,10),PM(0x8a8a92),-.3,.98,0));
+  g.add(mesh(new THREE.BoxGeometry(.16,.16,.16),PM(0xcaa24a),.2,.96,0));
+  g.rotation.y=facing;
+  g.position.set(x,0,z);
+  scene.add(g);
+}
+[-12,-26,-40].forEach(z=>{
+  makeTableSet(-CORR_W/2+1.3,midZ+CORR_LEN/2-startZ+z,Math.PI/2);
+  makeTableSet(CORR_W/2-1.3,midZ+CORR_LEN/2-startZ+z,-Math.PI/2);
+});
+
+/* ===== corpos caídos estilizados (discretos, sem grafismo pesado) ===== */
+function makeFallenBody(x,z,rotY){
+  const g=new THREE.Group();
+  const stainMat=new THREE.MeshBasicMaterial({color:0x4a0808,transparent:true,opacity:.55});
+  g.add(mesh(new THREE.CircleGeometry(.62,20).rotateX(-Math.PI/2),stainMat,0,.012,0));
+  const cloakMat=PM(0x333028,{roughness:1});
+  const torso=mesh(new THREE.SphereGeometry(.28,10,8),cloakMat,0,.16,0);torso.scale.set(1,.45,.62);g.add(torso);
+  const head=mesh(new THREE.SphereGeometry(.14,10,8),PM(0xc9a074),-.4,.17,0);g.add(head);
+  const arm=mesh(new THREE.BoxGeometry(.4,.07,.09),PM(0x5a4230),.02,.12,0);g.add(arm);
+  g.rotation.y=rotY;g.position.set(x,0,z);
+  scene.add(g);
+}
+makeFallenBody(-.55,midZ+CORR_LEN/2-startZ-18,.6);
+makeFallenBody(.6,midZ+CORR_LEN/2-startZ-33,-1.1);
+
+/* ===== luz ambiente escura, tipo masmorra ===== */
+scene.add(new THREE.HemisphereLight(0x33405a,0x0a0705,.28));
+const moonDir=new THREE.DirectionalLight(0x4a5a80,.18);
+moonDir.position.set(-4,8,2);scene.add(moonDir);
+
+/* ===== câmera passeando pelo corredor ===== */
 let t0=performance.now();
 function frame(now){
   requestAnimationFrame(frame);
   const t=(now-t0)/1000;
-  ctx.clearRect(0,0,W,H);
-  drawFloorAndWalls();
-  drawCarpet();
-  // janelas nas paredes laterais
-  drawWindow(W*.12,H*.32,W*.09,H*.16);
-  drawWindow(W*.88,H*.32,W*.09,H*.16);
-  drawWindow(W*.5,H*.3,W*.1,H*.17);
-  // mesas com cadeiras nos dois lados, ao fundo
-  drawTableSet(W*.20,H*.58,Math.min(1.3,W/1000),1);
-  drawTableSet(W*.80,H*.58,Math.min(1.3,W/1000),-1);
-  drawTableSet(W*.335,H*.66,Math.min(1.5,W/900),1);
-  drawTableSet(W*.665,H*.66,Math.min(1.5,W/900),-1);
-  // tochas na parede
-  drawTorch(W*.30,H*.38,t);drawTorch(W*.70,H*.38,t);
-  drawTorch(W*.05,H*.5,t);drawTorch(W*.95,H*.5,t);
-  // corpos caídos no corredor (estilizados, discretos)
-  drawFallenBody(W*.42,H*.86,Math.min(1.6,W/900),false);
-  drawFallenBody(W*.62,H*.93,Math.min(1.7,W/900),true);
-  // vinheta escura nas bordas
-  const vg=ctx.createRadialGradient(W/2,H*.55,H*.2,W/2,H*.55,H*.85);
-  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.55)');
-  ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
+  for(const tl of torchLights){
+    const fl=1+Math.sin(t*9+tl.ph)*.18+Math.sin(t*23+tl.ph)*.08+(Math.random()-.5)*.08;
+    tl.light.intensity=tl.base*fl;
+    tl.flame.scale.set(.5+fl*.12,.75+fl*.15,1);
+  }
+  const travel=(Math.sin(t*.08)*.5+.5); // 0..1 vai e volta suavemente
+  camera.position.set(0,1.55,startZ-travel*(CORR_LEN-12));
+  camera.lookAt(0,1.5,camera.position.z-8);
+  renderer.render(scene,camera);
 }
 requestAnimationFrame(frame);
 })();
